@@ -1,17 +1,17 @@
 {
   "name": "weblarek_backend",
   "version": "1.0.0",
-  "description": "< Добавьте описание проекта в свободной форме >",
+  "description": "Аудит безопасности и устранение уязвимостей",
   "main": "dist/app.js",
   "scripts": {
     "lint": "npx eslint src/**/*.ts",
     "format": "prettier ./src --write",
     "build": "tsc",
-    "dev": "npx nodemon -L src/app.ts ",
-    "start": "ts-node src/app.ts",
+    "dev": "ts-node-dev --watch src src/app.ts",
+    "start": "node dist/app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "< Укажите здесь автора работы >",
+  "author": "Alex-Ven",
   "license": "ISC",
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
