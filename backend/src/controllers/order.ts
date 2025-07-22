@@ -185,27 +185,30 @@ export const getOrdersCurrentUser = async (
         let orders = user.orders as unknown as IOrder[]
 
         if (search) {
-    const searchStr = String(search);
-    const searchRegex = new RegExp(escapeRegExp(searchStr), 'i'); // ✅ Экранируем регулярку
-    const searchNumber = Number(searchStr);
+            const searchStr = String(search)
+            const searchRegex = new RegExp(escapeRegExp(searchStr), 'i') // ✅ Экранируем регулярку
+            const searchNumber = Number(searchStr)
 
-    // Используем .lean() для корректной типизации
-    const productsDoc = await Product.find({ title: searchRegex }).lean().exec();
-    const productIds = productsDoc.map((p) => p._id as Types.ObjectId); // Явное приведение
+            // Используем .lean() для корректной типизации
+            const productsDoc = await Product.find({ title: searchRegex })
+                .lean()
+                .exec()
+            const productIds = productsDoc.map((p) => p._id as Types.ObjectId) // Явное приведение
 
-    orders = orders.filter((order) => {
-        const matchesProductTitle = order.products.some((product) =>
-            productIds.some((id: Types.ObjectId) => 
-                id.equals(product._id) // ✅ Теперь нет ошибки
-            )
-        );
+            orders = orders.filter((order) => {
+                const matchesProductTitle = order.products.some((product) =>
+                    productIds.some(
+                        (id: Types.ObjectId) => id.equals(product._id) // ✅ Теперь нет ошибки
+                    )
+                )
 
-        const matchesOrderNumber =
-            !Number.isNaN(searchNumber) && order.orderNumber === searchNumber;
+                const matchesOrderNumber =
+                    !Number.isNaN(searchNumber) &&
+                    order.orderNumber === searchNumber
 
-        return matchesOrderNumber || matchesProductTitle;
-    });
-}
+                return matchesOrderNumber || matchesProductTitle
+            })
+        }
 
         const totalOrders = orders.length
         const totalPages = Math.ceil(totalOrders / Number(limit))
@@ -303,16 +306,19 @@ export const createOrder = async (
         // Валидация items
         const productIds = Array.isArray(req.body.items)
             ? req.body.items.map((id: unknown) => {
-                  if (typeof id !== 'string' && !(id instanceof Types.ObjectId)) {
-                      throw new BadRequestError('Неверный формат ID товара');
+                  if (
+                      typeof id !== 'string' &&
+                      !(id instanceof Types.ObjectId)
+                  ) {
+                      throw new BadRequestError('Неверный формат ID товара')
                   }
                   try {
-                      return new Types.ObjectId(id.toString());
+                      return new Types.ObjectId(id.toString())
                   } catch (error) {
-                      throw new BadRequestError(`Невалидный ID товара: ${id}`);
+                      throw new BadRequestError(`Невалидный ID товара: ${id}`)
                   }
               })
-            : [];
+            : []
 
         // Загружаем только нужные товары
         const products = await Product.find({ _id: { $in: productIds } })
@@ -331,6 +337,16 @@ export const createOrder = async (
         const totalBasket = basket.reduce((sum, p) => sum + p.price!, 0)
         if (totalBasket !== total) {
             return next(new BadRequestError('Неверная сумма заказа'))
+        }
+
+        if (comment && typeof comment !== 'string') {
+            return next(new BadRequestError('Комментарий должен быть строкой'))
+        }
+
+        if (comment.includes('<script>') || /<[^>]+on\w+=/.test(comment)) {
+            return next(
+                new BadRequestError('Недопустимые символы в комментарии')
+            )
         }
 
         // Создание заказа
