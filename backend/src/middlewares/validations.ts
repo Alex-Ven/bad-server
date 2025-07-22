@@ -2,7 +2,7 @@ import { Joi, celebrate } from 'celebrate'
 import { Types } from 'mongoose'
 
 // eslint-disable-next-line no-useless-escape
-export const phoneRegExp = /^(\+\d+)?(?:\s|-?|\(?\d+\)?)+$/
+export const phoneRegExp = /^\+?[78][\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}$/
 
 export enum PaymentType {
     Card = 'card',
@@ -38,13 +38,16 @@ export const validateOrderBody = celebrate({
         phone: Joi.string().required().pattern(phoneRegExp).messages({
             'string.empty': 'Не указан телефон',
         }),
-        address: Joi.string().required().messages({
-            'string.empty': 'Не указан адрес',
-        }),
+        address: Joi.string().required().min(5).max(500).messages({
+            'string.max': 'Адрес должен быть не более 500 символов',
+            'string.min': 'Адрес должен быть не менее 5 символов',
+         }),
         total: Joi.number().required().messages({
             'string.empty': 'Не указана сумма заказа',
         }),
-        comment: Joi.string().optional().allow(''),
+        comment: Joi.string().optional().allow('').max(2000).messages({
+            'string.max': 'Комментарий должен быть не более 2000 символов',
+        }),
     }),
 })
 
@@ -64,8 +67,10 @@ export const validateProductBody = celebrate({
         category: Joi.string().required().messages({
             'string.empty': 'Поле "category" должно быть заполнено',
         }),
-        description: Joi.string().required().messages({
-            'string.empty': 'Поле "description" должно быть заполнено',
+        description: Joi.string().required().max(2000).messages({
+            'string.empty': 'Описание не может быть пустым',
+            'string.max': 'Описание должно быть не более 2000 символов',
+            'any.required': 'Описание обязательно для заполнения',
         }),
         price: Joi.number().allow(null),
     }),
@@ -95,7 +100,7 @@ export const validateObjId = celebrate({
                 if (Types.ObjectId.isValid(value)) {
                     return value
                 }
-                return helpers.message({ any: 'Невалидный id' })
+                return helpers.message({ custom: 'Невалидный id' })
             }),
     }),
 })
