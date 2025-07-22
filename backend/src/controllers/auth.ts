@@ -110,7 +110,9 @@ const deleteRefreshTokenInUser = async (
         .update(rfTkn)
         .digest('hex')
 
-    user.tokens = user.tokens.filter((tokenObj) => tokenObj.token !== rTknHash)
+    user.tokens = (user.tokens || []).filter(
+        (tokenObj) => tokenObj.token !== rTknHash
+    )
 
     await user.save()
 

@@ -1,9 +1,10 @@
 import { NextFunction, Request, Response } from 'express'
 import { FilterQuery, Error as MongooseError, Types } from 'mongoose'
+import escapeRegExp from '../utils/escapeRegExp'
 import BadRequestError from '../errors/bad-request-error'
 import NotFoundError from '../errors/not-found-error'
 import Order, { IOrder } from '../models/order'
-import Product, { IProduct } from '../models/product'
+import Product from '../models/product'
 import User from '../models/user'
 
 // eslint-disable-next-line max-len
@@ -184,25 +185,27 @@ export const getOrdersCurrentUser = async (
         let orders = user.orders as unknown as IOrder[]
 
         if (search) {
-            // если не экранировать то получаем Invalid regular expression: /+1/i: Nothing to repeat
-            const searchRegex = new RegExp(search as string, 'i')
-            const searchNumber = Number(search)
-            const products = await Product.find({ title: searchRegex })
-            const productIds = products.map((product) => product._id)
+    const searchStr = String(search);
+    const searchRegex = new RegExp(escapeRegExp(searchStr), 'i'); // ✅ Экранируем регулярку
+    const searchNumber = Number(searchStr);
 
-            orders = orders.filter((order) => {
-                // eslint-disable-next-line max-len
-                const matchesProductTitle = order.products.some((product) =>
-                    productIds.some((id) => id.equals(product._id))
-                )
-                // eslint-disable-next-line max-len
-                const matchesOrderNumber =
-                    !Number.isNaN(searchNumber) &&
-                    order.orderNumber === searchNumber
+    // Используем .lean() для корректной типизации
+    const productsDoc = await Product.find({ title: searchRegex }).lean().exec();
+    const productIds = productsDoc.map((p) => p._id as Types.ObjectId); // Явное приведение
 
-                return matchesOrderNumber || matchesProductTitle
-            })
-        }
+    orders = orders.filter((order) => {
+        const matchesProductTitle = order.products.some((product) =>
+            productIds.some((id: Types.ObjectId) => 
+                id.equals(product._id) // ✅ Теперь нет ошибки
+            )
+        );
+
+        const matchesOrderNumber =
+            !Number.isNaN(searchNumber) && order.orderNumber === searchNumber;
+
+        return matchesOrderNumber || matchesProductTitle;
+    });
+}
 
         const totalOrders = orders.length
         const totalPages = Math.ceil(totalOrders / Number(limit))
@@ -288,30 +291,52 @@ export const createOrder = async (
     next: NextFunction
 ) => {
     try {
-        const basket: IProduct[] = []
-        const products = await Product.find<IProduct>({})
         const userId = res.locals.user._id
-        const { address, payment, phone, total, email, items, comment } =
-            req.body
 
-        items.forEach((id: Types.ObjectId) => {
-            const product = products.find((p) => p._id.equals(id))
-            if (!product) {
-                throw new BadRequestError(`Товар с id ${id} не найден`)
-            }
-            if (product.price === null) {
-                throw new BadRequestError(`Товар с id ${id} не продается`)
-            }
-            return basket.push(product)
-        })
-        const totalBasket = basket.reduce((a, c) => a + c.price, 0)
+        // Проверка пользователя
+        await User.findById(userId).orFail(
+            () => new NotFoundError('Пользователь не найден')
+        )
+
+        const { address, payment, phone, total, email, comment } = req.body
+
+        // Валидация items
+        const productIds = Array.isArray(req.body.items)
+            ? req.body.items.map((id: unknown) => {
+                  if (typeof id !== 'string' && !(id instanceof Types.ObjectId)) {
+                      throw new BadRequestError('Неверный формат ID товара');
+                  }
+                  try {
+                      return new Types.ObjectId(id.toString());
+                  } catch (error) {
+                      throw new BadRequestError(`Невалидный ID товара: ${id}`);
+                  }
+              })
+            : [];
+
+        // Загружаем только нужные товары
+        const products = await Product.find({ _id: { $in: productIds } })
+        if (products.length !== productIds.length) {
+            return next(
+                new BadRequestError('Один или несколько товаров не найдены')
+            )
+        }
+
+        // Проверка цены и расчёт
+        const basket = products.filter((p) => p.price !== null)
+        if (basket.length !== products.length) {
+            return next(new BadRequestError('Один из товаров не продаётся'))
+        }
+
+        const totalBasket = basket.reduce((sum, p) => sum + p.price!, 0)
         if (totalBasket !== total) {
             return next(new BadRequestError('Неверная сумма заказа'))
         }
 
+        // Создание заказа
         const newOrder = new Order({
             totalAmount: total,
-            products: items,
+            products: productIds,
             payment,
             phone,
             email,
@@ -319,10 +344,11 @@ export const createOrder = async (
             customer: userId,
             deliveryAddress: address,
         })
-        const populateOrder = await newOrder.populate(['customer', 'products'])
-        await populateOrder.save()
 
-        return res.status(200).json(populateOrder)
+        const savedOrder = await newOrder.populate(['customer', 'products'])
+        await savedOrder.save()
+
+        return res.status(200).json(savedOrder)
     } catch (error) {
         if (error instanceof MongooseError.ValidationError) {
             return next(new BadRequestError(error.message))
