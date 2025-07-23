@@ -1,12 +1,12 @@
 /* eslint-disable no-param-reassign */
-import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
-import mongoose, { Document, HydratedDocument, Model, Types } from 'mongoose';
-import validator from 'validator';
-import bcrypt from 'bcryptjs';
+import crypto from 'crypto'
+import jwt from 'jsonwebtoken'
+import mongoose, { Document, HydratedDocument, Model, Types } from 'mongoose'
+import validator from 'validator'
+import bcrypt from 'bcrypt'
 
-import { ACCESS_TOKEN, REFRESH_TOKEN } from '../config';
-import UnauthorizedError from '../errors/unauthorized-error';
+import { ACCESS_TOKEN, REFRESH_TOKEN } from '../config'
+import UnauthorizedError from '../errors/unauthorized-error'
 
 export enum Role {
     Customer = 'customer',
@@ -14,32 +14,32 @@ export enum Role {
 }
 
 export interface IUser extends Document {
-    name: string;
-    email: string;
-    password: string;
-    tokens: { token: string }[];
-    roles?: Role[];
-    phone: string;
-    totalAmount: number;
-    orderCount: number;
-    orders: Types.ObjectId[];
-    lastOrderDate: Date | null;
-    lastOrder: Types.ObjectId | null;
-    _id: Types.ObjectId;
+    name: string
+    email: string
+    password: string
+    tokens: { token: string }[]
+    roles?: Role[]
+    phone: string
+    totalAmount: number
+    orderCount: number
+    orders: Types.ObjectId[]
+    lastOrderDate: Date | null
+    lastOrder: Types.ObjectId | null
+    _id: Types.ObjectId
 }
 
 interface IUserMethods {
-    generateAccessToken(): string;
-    generateRefreshToken(): Promise<string>;
-    toJSON(): Record<string, unknown>;
-    calculateOrderStats(): Promise<void>;
+    generateAccessToken(): string
+    generateRefreshToken(): Promise<string>
+    toJSON(): Record<string, unknown>
+    calculateOrderStats(): Promise<void>
 }
 
 interface IUserModel extends Model<IUser, {}, IUserMethods> {
     findUserByCredentials: (
         email: string,
         password: string
-    ) => Promise<HydratedDocument<IUser, IUserMethods>>;
+    ) => Promise<HydratedDocument<IUser, IUserMethods>>
 }
 
 const userSchema = new mongoose.Schema<IUser, IUserModel, IUserMethods>(
@@ -66,7 +66,7 @@ const userSchema = new mongoose.Schema<IUser, IUserModel, IUserMethods>(
             type: String,
             required: [true, 'Поле "password" должно быть заполнено'],
             minlength: [6, 'Минимальная длина поля "password" - 6'],
-            select: false,
+            // select: false,
         },
 
         tokens: [
@@ -106,29 +106,29 @@ const userSchema = new mongoose.Schema<IUser, IUserModel, IUserMethods>(
         toJSON: {
             virtuals: true,
             transform: (_doc, ret: Record<string, unknown>) => {
-                delete ret.tokens;
-                delete ret.password;
-                delete ret._id;
-                delete ret.roles;
-                return ret;
+                delete ret.tokens
+                delete ret.password
+                delete ret._id
+                delete ret.roles
+                return ret
             },
         },
     }
-);
+)
 
 userSchema.pre('save', async function hashingPassword(next) {
     try {
         if (this.isModified('password') && this.password) {
-            this.password = await bcrypt.hash(this.password, 10);
+            this.password = await bcrypt.hash(this.password, 10)
         }
-        next();
+        next()
     } catch (error) {
-        next(error as Error);
+        next(error as Error)
     }
-});
+})
 
 userSchema.methods.generateAccessToken = function generateAccessToken() {
-    const user = this as HydratedDocument<IUser, IUserMethods>;
+    const user = this as HydratedDocument<IUser, IUserMethods>
     return jwt.sign(
         {
             _id: user._id.toString(),
@@ -139,53 +139,73 @@ userSchema.methods.generateAccessToken = function generateAccessToken() {
             expiresIn: ACCESS_TOKEN.expiry,
             subject: user.id.toString(),
         }
-    );
-};
+    )
+}
 
-userSchema.methods.generateRefreshToken = async function generateRefreshToken() {
-    const user = this as HydratedDocument<IUser, IUserMethods>;
-    const refreshToken = jwt.sign(
-        {
-            _id: user._id.toString(),
-        },
-        REFRESH_TOKEN.secret,
-        {
-            expiresIn: REFRESH_TOKEN.expiry,
-            subject: user.id.toString(),
+userSchema.methods.generateRefreshToken =
+    async function generateRefreshToken() {
+        const user = this as HydratedDocument<IUser, IUserMethods>
+        const refreshToken = jwt.sign(
+            {
+                _id: user._id.toString(),
+            },
+            REFRESH_TOKEN.secret,
+            {
+                expiresIn: REFRESH_TOKEN.expiry,
+                subject: user.id.toString(),
+            }
+        )
+
+        const rTknHash = crypto
+            .createHmac('sha256', REFRESH_TOKEN.secret)
+            .update(refreshToken)
+            .digest('hex')
+
+        if (!user.tokens) {
+            user.tokens = []
         }
-    );
+        user.tokens.push({ token: rTknHash })
+        await user.save()
 
-    const rTknHash = crypto
-        .createHmac('sha256', REFRESH_TOKEN.secret)
-        .update(refreshToken)
-        .digest('hex');
-
-    if (!user.tokens) {
-        user.tokens = [];
+        return refreshToken
     }
-    user.tokens.push({ token: rTknHash });
-    await user.save();
 
-    return refreshToken;
-};
-
-userSchema.statics.findUserByCredentials = async function findByCredentials(
+userSchema.statics.findUserByCredentials = async function (
     email: string,
     password: string
 ) {
     const user = await this.findOne({ email })
         .select('+password')
-        .orFail(() => new UnauthorizedError('Неправильные почта или пароль'));
-    
-    const passwdMatch = await bcrypt.compare(password, user.password);
-    if (!passwdMatch) {
-        throw new UnauthorizedError('Неправильные почта или пароль');
+        .orFail(() => new UnauthorizedError('Неправильные почта или пароль'))
+
+    console.log('Auth attempt:', {
+        email,
+        dbPassword: user.password,
+        isBcrypt: user.password.startsWith('$2'),
+    })
+
+    // Проверка bcrypt
+    if (user.password.startsWith('$2')) {
+        const isMatch = await bcrypt.compare(password, user.password)
+        if (!isMatch)
+            throw new UnauthorizedError('Неправильные почта или пароль')
+        return user
     }
-    return user;
-};
+
+    // Проверка MD5 (для старых пользователей)
+    const md5Hash = crypto.createHash('md5').update(password).digest('hex')
+    if (md5Hash === user.password) {
+        // Миграция на bcrypt
+        user.password = await bcrypt.hash(password, 10)
+        await user.save()
+        return user
+    }
+
+    throw new UnauthorizedError('Неправильные почта или пароль')
+}
 
 userSchema.methods.calculateOrderStats = async function calculateOrderStats() {
-    const user = this as HydratedDocument<IUser, IUserMethods>;
+    const user = this as HydratedDocument<IUser, IUserMethods>
     const orderStats = await mongoose.model('order').aggregate([
         { $match: { customer: user._id } },
         {
@@ -197,24 +217,24 @@ userSchema.methods.calculateOrderStats = async function calculateOrderStats() {
                 lastOrder: { $last: '$_id' },
             },
         },
-    ]);
+    ])
 
     if (orderStats.length > 0) {
-        const stats = orderStats[0];
-        user.totalAmount = stats.totalAmount;
-        user.orderCount = stats.orderCount;
-        user.lastOrderDate = stats.lastOrderDate;
-        user.lastOrder = stats.lastOrder;
+        const stats = orderStats[0]
+        user.totalAmount = stats.totalAmount
+        user.orderCount = stats.orderCount
+        user.lastOrderDate = stats.lastOrderDate
+        user.lastOrder = stats.lastOrder
     } else {
-        user.totalAmount = 0;
-        user.orderCount = 0;
-        user.lastOrderDate = null;
-        user.lastOrder = null;
+        user.totalAmount = 0
+        user.orderCount = 0
+        user.lastOrderDate = null
+        user.lastOrder = null
     }
 
-    await user.save();
-};
+    await user.save()
+}
 
-const UserModel = mongoose.model<IUser, IUserModel>('user', userSchema);
+const UserModel = mongoose.model<IUser, IUserModel>('user', userSchema)
 
-export default UserModel;
+export default UserModel
