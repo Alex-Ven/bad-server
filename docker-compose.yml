@@ -36,6 +36,17 @@ services:
       - internal
     depends_on:
       - mongo
+      - redis
+
+  redis:
+    image: redis
+    restart: always
+    ports:
+      - 6379:6379
+    volumes:
+      - redis:/data
+    networks:
+      - internal
 
   server:
     build:
@@ -55,6 +66,7 @@ volumes:
   frontend:
   public:
   db:
+  redis:
 
 networks:
   internal:
