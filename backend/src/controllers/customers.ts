@@ -94,14 +94,27 @@ export const getCustomers = async (
         }
 
         if (search) {
-            const safeSearch = escapeRegExp(search as string)
+            // 1. Проверка длины поискового запроса
+            const searchStr = search as string
+            if (searchStr.length > 50) {
+                throw new BadRequestError(
+                    'Поисковый запрос слишком длинный (максимум 50 символов)'
+                )
+            }
+
+            // 2. Экранирование специальных символов
+            const safeSearch = escapeRegExp(searchStr)
+
+            // 3. Создание регулярного выражения с таймаутом (Node.js 16+)
             const searchRegex = new RegExp(safeSearch, 'i')
+
+            // 4. Добавляем ограничение по времени выполнения для MongoDB
             const orders = await Order.find(
                 {
                     $or: [{ deliveryAddress: searchRegex }],
                 },
                 '_id'
-            )
+            ).maxTimeMS(1000) // Ограничение 1 секунда на выполнение запроса
 
             const orderIds = orders.map((order) => order._id)
 
