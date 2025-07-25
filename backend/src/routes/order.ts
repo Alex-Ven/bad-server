@@ -11,16 +11,18 @@ import {
 import auth, { roleGuardMiddleware } from '../middlewares/auth'
 import { validateOrderBody } from '../middlewares/validations'
 import { Role } from '../models/user'
+import { orderCreationLimiter, sensitiveOperationLimiter } from '../middlewares/rateLimiter'
 
 const orderRouter = Router()
 
-orderRouter.post('/', auth, validateOrderBody, createOrder)
+orderRouter.post('/', auth, orderCreationLimiter, validateOrderBody, createOrder)
 orderRouter.get('/all', auth, getOrders)
 orderRouter.get('/all/me', auth, getOrdersCurrentUser)
 orderRouter.get(
     '/:orderNumber',
     auth,
     roleGuardMiddleware(Role.Admin),
+    sensitiveOperationLimiter,
     getOrderByNumber
 )
 orderRouter.get('/me/:orderNumber', auth, getOrderCurrentUserByNumber)
