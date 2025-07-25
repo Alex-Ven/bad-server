@@ -94,29 +94,68 @@ const deleteRefreshTokenInUser = async (
     const rfTkn = cookies[REFRESH_TOKEN.cookie.name]
 
     if (!rfTkn) {
+        console.error('Refresh token missing in cookies')
         throw new UnauthorizedError('Не валидный токен')
     }
 
-    const decodedRefreshTkn = jwt.verify(
-        rfTkn,
-        REFRESH_TOKEN.secret
-    ) as JwtPayload
-    const user = await User.findOne({
-        _id: decodedRefreshTkn._id,
-    }).orFail(() => new UnauthorizedError('Пользователь не найден в базе'))
+    try {
+        // Верификация JWT токена
+        const decodedRefreshTkn = jwt.verify(
+            rfTkn,
+            REFRESH_TOKEN.secret
+        ) as JwtPayload
 
-    const rTknHash = crypto
-        .createHmac('sha256', REFRESH_TOKEN.secret)
-        .update(rfTkn)
-        .digest('hex')
+        console.log(`Processing token for user ${decodedRefreshTkn._id}`)
 
-    user.tokens = (user.tokens || []).filter(
-        (tokenObj) => tokenObj.token !== rTknHash
-    )
+        // Поиск пользователя
+        const user = await User.findOne({
+            _id: decodedRefreshTkn._id,
+        }).orFail(() => {
+            console.error(`User ${decodedRefreshTkn._id} not found`)
+            return new UnauthorizedError('Пользователь не найден в базе')
+        })
 
-    await user.save()
+        // Хеширование токена для сравнения
+        const rTknHash = crypto
+            .createHmac('sha256', REFRESH_TOKEN.secret)
+            .update(rfTkn)
+            .digest('hex')
 
-    return user
+        console.log(`Generated token hash: ${rTknHash.substring(0, 10)}...`)
+        console.log(`User has ${user.tokens?.length || 0} stored tokens`)
+
+        // Поиск совпадающего токена
+        const tokenIndex =
+            user.tokens?.findIndex((t) => t.token === rTknHash) ?? -1
+
+        if (tokenIndex === -1) {
+            console.error('No matching token found in database')
+            console.error(
+                'Stored tokens:',
+                user.tokens?.map((t) => t.token.substring(0, 10))
+            )
+            throw new UnauthorizedError('Не валидный токен')
+        }
+
+        // Удаление токена
+        user.tokens?.splice(tokenIndex, 1)
+        await user.save()
+        console.log('Token successfully removed')
+
+        return user
+    } catch (err) {
+        console.error('Error in deleteRefreshTokenInUser:', err)
+
+        if (err instanceof jwt.TokenExpiredError) {
+            throw new UnauthorizedError('Срок действия токена истек')
+        }
+
+        if (err instanceof jwt.JsonWebTokenError) {
+            throw new UnauthorizedError('Не валидный токен')
+        }
+
+        throw new UnauthorizedError('Ошибка аутентификации')
+    }
 }
 
 // Реализация удаления токена из базы может отличаться
@@ -124,14 +163,11 @@ const deleteRefreshTokenInUser = async (
 const logout = async (req: Request, res: Response, next: NextFunction) => {
     try {
         await deleteRefreshTokenInUser(req, res, next)
-        const expireCookieOptions = {
-            ...REFRESH_TOKEN.cookie.options,
-            maxAge: -1,
-        }
-        res.cookie(REFRESH_TOKEN.cookie.name, '', expireCookieOptions)
-        res.status(200).json({
-            success: true,
+        res.clearCookie(REFRESH_TOKEN.cookie.name, {
+            path: '/',
+            domain: process.env.COOKIE_DOMAIN || undefined,
         })
+        res.status(200).json({ success: true })
     } catch (error) {
         next(error)
     }
@@ -144,25 +180,23 @@ const refreshAccessToken = async (
     next: NextFunction
 ) => {
     try {
-        const userWithRefreshTkn = await deleteRefreshTokenInUser(
-            req,
-            res,
-            next
-        )
-        const accessToken = await userWithRefreshTkn.generateAccessToken()
-        const refreshToken = await userWithRefreshTkn.generateRefreshToken()
+        const user = await deleteRefreshTokenInUser(req, res, next)
+        const accessToken = user.generateAccessToken()
+        const refreshToken = await user.generateRefreshToken()
+
         res.cookie(
             REFRESH_TOKEN.cookie.name,
             refreshToken,
             REFRESH_TOKEN.cookie.options
         )
-        return res.json({
+
+        res.json({
             success: true,
-            user: userWithRefreshTkn,
+            user,
             accessToken,
         })
     } catch (error) {
-        return next(error)
+        next(error)
     }
 }
 

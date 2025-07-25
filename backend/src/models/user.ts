@@ -159,14 +159,17 @@ userSchema.methods.generateRefreshToken =
         const rTknHash = crypto
             .createHmac('sha256', REFRESH_TOKEN.secret)
             .update(refreshToken)
-            .digest('hex')
+            .digest('hex') // Всегда используем hex для согласованности
 
-        if (!user.tokens) {
-            user.tokens = []
-        }
+        user.tokens = user.tokens || []
         user.tokens.push({ token: rTknHash })
-        await user.save()
 
+        // Ограничиваем количество токенов на пользователя
+        if (user.tokens.length > 5) {
+            user.tokens.shift() // Удаляем самый старый токен
+        }
+
+        await user.save()
         return refreshToken
     }
 
