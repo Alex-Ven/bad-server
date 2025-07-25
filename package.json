@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "sanitize-filename": "^1.6.3",
+    "xss": "^1.0.15"
+  }
+}

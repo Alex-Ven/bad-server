@@ -1,8 +1,14 @@
 import { Router } from 'express'
 import { uploadFile } from '../controllers/upload'
-import fileMiddleware from '../middlewares/file'
+import fileMiddleware, { postProcessFile } from '../middlewares/file'
 
 const uploadRouter = Router()
-uploadRouter.post('/', fileMiddleware.single('file'), uploadFile)
+
+// ✅ Правильное использование middleware
+uploadRouter.post('/', 
+    fileMiddleware.single('file'),  // Обработка файла
+    postProcessFile,                // Пост-обработка (санитизация SVG)
+    uploadFile                      // Основной контроллер
+)
 
 export default uploadRouter
