@@ -1,115 +1,182 @@
-import csrf from 'csurf'
+import Tokens from 'csrf'
 import { Request, Response, NextFunction } from 'express'
 import BadRequestError from '../errors/bad-request-error'
 import ForbiddenError from '../errors/forbidden-error'
 
-// ✅ Основной CSRF middleware
-export const csrfProtection = csrf({
-    cookie: {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 3600000
+// Декларация расширения типа Session для добавления кастомных полей
+declare module 'express-session' {
+    interface Session {
+        csrfSecret?: string
     }
-})
+}
 
-// ✅ Middleware для генерации CSRF токена (чистый подход)
-export const generateCsrfToken = (req: Request, res: Response, next: NextFunction) => {
-    // Не мутируем существующие объекты
-    // Просто убеждаемся, что токен будет доступен
-    if (req.csrfToken) {
-        // Токен будет доступен через req.csrfToken()
-        // Можно также передать его через res.locals безопасно
-        if (!res.locals) {
-            res.locals = {}
-        }
-        // Проверяем, можно ли безопасно записать
-        if (typeof res.locals === 'object' && res.locals !== null) {
-            res.locals.csrfToken = req.csrfToken()
-        }
+const tokens = new Tokens()
+const CSRF_SECRET_SESSION_KEY = 'csrfSecret'
+
+export const csrfProtection = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    if (!req.session) {
+        return next(
+            new Error(
+                'Сессия не инициализирована. Убедитесь, что express-session настроен и используется до этого middleware.'
+            )
+        )
+    }
+
+    let secret = req.session[CSRF_SECRET_SESSION_KEY]
+
+    if (!secret) {
+        secret = tokens.secretSync()
+        req.session[CSRF_SECRET_SESSION_KEY] = secret
+    }
+
+    const token = tokens.create(secret)
+
+    if (!res.locals) {
+        res.locals = {}
+    }
+    res.locals.csrfToken = token
+
+    next()
+}
+
+export const generateCsrfToken = (
+    _req: Request,
+    _res: Response,
+    next: NextFunction
+) => {
+    next()
+}
+
+export const csrfTokenApi = (
+    _req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    if (res.locals.csrfToken) {
+        res.setHeader('X-CSRF-Token', res.locals.csrfToken)
+    } else {
+        console.warn(
+            'CSRF token not found in res.locals. Was csrfProtection middleware called?'
+        )
     }
     next()
 }
 
-// ✅ Остальные middleware без мутации параметров
-export const csrfTokenApi = (req: Request, res: Response, next: NextFunction) => {
-    if (req.csrfToken) {
-        res.setHeader('X-CSRF-Token', req.csrfToken())
-    }
-    next()
-}
-
-export const validateCsrfHeader = (_req: Request, _res: Response, next: NextFunction) => {
-    next()
-}
-
-export const getCsrfToken = (req: Request, res: Response, next: NextFunction) => {
+export const getCsrfToken = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+) => {
     try {
-        if (req.csrfToken) {
-            return res.json({ 
-                csrfToken: req.csrfToken(),
+        if (res.locals.csrfToken) {
+            return res.json({
+                csrfToken: res.locals.csrfToken,
                 success: true,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
             })
         }
-        return next(new BadRequestError('CSRF защита не доступна'))
+        if (!req.session) {
+            return next(
+                new Error('Сессия не инициализирована для генерации токена.')
+            )
+        }
+        const secret = tokens.secretSync()
+        const token = tokens.create(secret)
+        return res.json({
+            csrfToken: token,
+            success: true,
+            timestamp: new Date().toISOString(),
+        })
     } catch (error) {
         next(new BadRequestError('Ошибка генерации CSRF токена для API'))
     }
 }
 
-// ✅ Middleware для проверки CSRF токена в теле формы
-export const validateFormCsrf = (req: Request, _res: Response, next: NextFunction) => {
+export const validateCsrfToken = (
+    req: Request,
+    _res: Response,
+    next: NextFunction
+) => {
     try {
-        // Для POST/PUT/PATCH/DELETE запросов проверяем CSRF токен
-        const isFormMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)
-        
-        if (isFormMethod) {
-            const formToken = req.body.csrf || req.body.csrfToken
-            const headerToken = req.headers['x-csrf-token'] || req.headers['x-xsrf-token']
-            
-            // Если токен ожидается, но не предоставлен
-            if (!formToken && !headerToken) {
-                return next(new BadRequestError('CSRF токен обязателен для изменения данных'))
-            }
+        if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+            return next()
         }
-        
+
+        if (!req.session) {
+            return next(
+                new ForbiddenError(
+                    'Сессия не инициализирована. Требуется CSRF токен.'
+                )
+            )
+        }
+
+        const secret = req.session[CSRF_SECRET_SESSION_KEY]
+
+        if (!secret) {
+            return next(
+                new ForbiddenError(
+                    'CSRF токен отсутствует или истек. Возможно, сессия завершена или страница устарела. Пожалуйста, обновите страницу.'
+                )
+            )
+        }
+
+        const headerToken =
+            (req.headers['x-csrf-token'] as string) ||
+            (req.headers['x-xsrf-token'] as string)
+        const bodyToken = req.body.csrf || req.body.csrfToken
+        const requestToken = headerToken || bodyToken
+
+        if (!requestToken) {
+            return next(
+                new BadRequestError('CSRF токен не предоставлен в запросе')
+            )
+        }
+
+        const isValid = tokens.verify(secret, requestToken)
+
+        if (!isValid) {
+            return next(new ForbiddenError('Неверный CSRF токен'))
+        }
+
         next()
     } catch (error) {
-        next(new BadRequestError('Ошибка проверки CSRF токена формы'))
+        next(new BadRequestError('Ошибка проверки CSRF токена'))
     }
 }
 
+export const validateCsrfHeader = (
+    _req: Request,
+    _res: Response,
+    next: NextFunction
+) => {
+    next()
+}
 
-// ✅ Глобальный обработчик ошибок CSRF
-export const handleCsrfError = (error: any, _req: Request, res: Response, next: NextFunction) => {
-    if (error.code === 'EBADCSRFTOKEN') {
-        // ✅ Используем ForbiddenError для CSRF ошибок
+export const handleCsrfError = (
+    error: any,
+    _req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    if (error instanceof ForbiddenError) {
         return res.status(403).json({
             success: false,
-            error: 'Неверный CSRF токен',
-            message: 'Пожалуйста, обновите страницу и попробуйте снова',
-            code: 'INVALID_CSRF_TOKEN'
+            error: error.message,
+            code: 'FORBIDDEN',
         })
     }
-    
-    // Если это наша ошибка BadRequest
+
     if (error instanceof BadRequestError) {
         return res.status(error.statusCode).json({
             success: false,
             error: error.message,
-            code: 'CSRF_VALIDATION_ERROR'
+            code: 'CSRF_VALIDATION_ERROR',
         })
     }
-    
-    // Если это ForbiddenError (например, из другого middleware)
-    if (error instanceof ForbiddenError) {
-        return res.status(error.statusCode).json({
-            success: false,
-            error: error.message,
-            code: 'FORBIDDEN'
-        })
-    }
-    
+
     next(error)
 }

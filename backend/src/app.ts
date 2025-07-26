@@ -10,7 +10,7 @@ import { DB_ADDRESS } from './config'
 import errorHandler from './middlewares/error-handler'
 import serveStatic from './middlewares/serverStatic'
 import routes from './routes'
-import { handleCsrfError } from './middlewares/csrf'
+import { csrfProtection, handleCsrfError } from './middlewares/csrf'
 
 const { PORT = 3000 } = process.env
 const { ORIGIN_ALLOW } = process.env
@@ -48,12 +48,11 @@ app.use(serveStatic(path.join(__dirname, 'public')))
 app.use(urlencoded({ extended: true }))
 app.use(json())
 
-// ✅ Добавляем обработчик ошибок CSRF (до основных роутов)
-app.use(handleCsrfError)
-
 app.options('*', cors())
 app.use(routes)
 app.use(errors())
+// ✅ Добавляем обработчик ошибок CSRF (до основных роутов)
+app.use(handleCsrfError)
 app.use(errorHandler)
 
 // eslint-disable-next-line no-console
@@ -63,7 +62,8 @@ const bootstrap = async () => {
         await mongoose.connect(DB_ADDRESS)
         await app.listen(PORT, () => console.log(`ok, server running on port ${PORT}`))
     } catch (error) {
-        console.error(error)
+        console.error('Failed to start server:', error);
+        process.exit(1);
     }
 }
 
