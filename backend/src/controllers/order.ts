@@ -6,9 +6,16 @@ import NotFoundError from '../errors/not-found-error'
 import Order, { IOrder } from '../models/order'
 import Product from '../models/product'
 import User from '../models/user'
+import { sanitizeInput } from '../utils/sanitize'
 
 // eslint-disable-next-line max-len
 // GET /orders?page=2&limit=5&sort=totalAmount&order=desc&orderDateFrom=2024-07-01&orderDateTo=2024-08-01&status=delivering&totalAmountFrom=100&totalAmountTo=1000&search=%2B1
+const VALID_ORDER_STATUSES = new Set([
+    'cancelled',
+    'completed',
+    'new',
+    'delivering',
+])
 
 export const getOrders = async (
     req: Request,
@@ -31,13 +38,12 @@ export const getOrders = async (
 
         const filters: FilterQuery<Partial<IOrder>> = {}
 
-        if (status) {
-            if (typeof status === 'object') {
-                Object.assign(filters, status)
-            }
-            if (typeof status === 'string') {
-                filters.status = status
-            }
+        if (
+            status &&
+            typeof status === 'string' &&
+            VALID_ORDER_STATUSES.has(status)
+        ) {
+            filters.status = status
         }
 
         if (totalAmountFrom) {
@@ -91,11 +97,17 @@ export const getOrders = async (
         ]
 
         if (search) {
-            const searchRegex = new RegExp(search as string, 'i')
-            const searchNumber = Number(search)
-
+            const searchStr = search as string
+            if (searchStr.length > 100) {
+                // Например, ограничим 100 символами
+                throw new BadRequestError('Поисковый запрос слишком длинный')
+            }
+            // 2. Экранирование специальных символов для безопасности
+            const safeSearch = escapeRegExp(searchStr)
+            const searchRegex = new RegExp(safeSearch, 'i')
+        
+            const searchNumber = Number(searchStr)
             const searchConditions: any[] = [{ 'products.title': searchRegex }]
-
             if (!Number.isNaN(searchNumber)) {
                 searchConditions.push({ orderNumber: searchNumber })
             }
@@ -106,7 +118,7 @@ export const getOrders = async (
                 },
             })
 
-            filters.$or = searchConditions
+            // filters.$or = searchConditions
         }
 
         const sort: { [key: string]: any } = {}
@@ -132,8 +144,8 @@ export const getOrders = async (
             }
         )
 
-        const orders = await Order.aggregate(aggregatePipeline)
-        const totalOrders = await Order.countDocuments(filters)
+        const orders = await Order.aggregate(aggregatePipeline, { maxTimeMS: 5000 });
+        const totalOrders = await Order.countDocuments(filters).maxTimeMS(5000)
         const totalPages = Math.ceil(totalOrders / Number(limit))
 
         res.status(200).json({
@@ -349,6 +361,19 @@ export const createOrder = async (
             )
         }
 
+        let sanitizedComment: string | undefined
+        if (comment && typeof comment === 'string') {
+            sanitizedComment = sanitizeInput(comment)
+            // Или, если вы хотите отклонить комментарий с любыми тегами:
+            if (sanitizedComment !== comment) {
+                return next(
+                    new BadRequestError(
+                        'Комментарий содержит недопустимые символы (HTML-теги запрещены)'
+                    )
+                )
+            }
+        }
+
         // Создание заказа
         const newOrder = new Order({
             totalAmount: total,
@@ -356,7 +381,7 @@ export const createOrder = async (
             payment,
             phone,
             email,
-            comment,
+            comment: sanitizedComment,
             customer: userId,
             deliveryAddress: address,
         })
