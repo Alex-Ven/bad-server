@@ -16,11 +16,9 @@ export const uploadFile = async (
     try {
         const allowedMimeTypes = [
             'image/png',
-            'image/jpg',
             'image/jpeg',
+            'image/jpg',
             'image/gif',
-            'image/svg+xml',
-            'text/plain',
         ]
         if (!allowedMimeTypes.includes(req.file.mimetype)) {
             throw new BadRequestError('Недопустимый тип файла')

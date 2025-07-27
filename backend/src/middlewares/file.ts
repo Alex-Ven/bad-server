@@ -13,8 +13,8 @@ export const MIN_FILE_SIZE_BYTES = 2 * 1024 // 2KB
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 
 const getSafeUploadPath = () => {
-    const basePath = join(__dirname, '../../public'); // Изменено для правильного пути
-    const uploadPath = 'uploads'; // Используем фиксированную папку вместо env
+    const basePath = join(__dirname, '../../public') // Изменено для правильного пути
+    const uploadPath = 'uploads' // Используем фиксированную папку вместо env
     const fullPath = join(basePath, uploadPath)
 
     const normalizedBase = basePath.split('\\').join('/').toLowerCase()
@@ -82,8 +82,8 @@ const allowedTypes = [
     'image/jpg',
     'image/jpeg',
     'image/gif',
-    'image/svg+xml',
-    'text/plain',
+    // 'image/svg+xml',
+    // 'text/plain',
 ]
 
 const sanitizeSVG = (filePath: string): Promise<void> =>
@@ -111,21 +111,25 @@ const sanitizeSVG = (filePath: string): Promise<void> =>
         })
     })
 
-const fileFilter = (
-    _req: Request,
+const fileFilter: (
+    req: Request,
     file: Express.Multer.File,
-    cb: FileFilterCallback
-) => {
-    try {
-        if (!allowedTypes.includes(file.mimetype)) {
-            return cb(new Error('Недопустимый тип файла'))
-        }
-
-        cb(null, true)
-    } catch (error) {
-        cb(error as Error)
+    callback: FileFilterCallback
+) => void = (_req, file, callback) => {
+    // Проверка MIME-типа
+    if (!allowedTypes.includes(file.mimetype)) {
+        return callback(new Error('Недопустимый тип файла')); // Multer ожидает только Error
     }
-}
+
+    // Проверка расширения файла
+    const ext = file.originalname.split('.').pop()?.toLowerCase();
+    if (!ext || !['png', 'jpg', 'jpeg', 'gif'].includes(ext)) {
+        return callback(new Error('Недопустимое расширение файла'));
+    }
+
+    // Успешный случай
+    return callback(null, true);
+};
 
 const postProcessFile = async (
     req: Request,
