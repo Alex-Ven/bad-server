@@ -9,7 +9,7 @@ import BadRequestError from '../errors/bad-request-error'
 type DestinationCallback = (error: Error | null, destination: string) => void
 type FileNameCallback = (error: Error | null, filename: string) => void
 
-export const MIN_FILE_SIZE_BYTES = 2 * 1024 // 2KB
+const MIN_FILE_SIZE_BYTES = 2 * 1024 // 2KB
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 
 const getSafeUploadPath = () => {
