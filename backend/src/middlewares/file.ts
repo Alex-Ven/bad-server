@@ -13,8 +13,8 @@ const MIN_FILE_SIZE_BYTES = 2 * 1024 // 2KB
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 
 const getSafeUploadPath = () => {
-    const basePath = join(__dirname, '../public')
-    const uploadPath = process.env.UPLOAD_PATH_TEMP || 'uploads'
+    const basePath = join(__dirname, '../../public'); // Изменено для правильного пути
+    const uploadPath = 'uploads'; // Используем фиксированную папку вместо env
     const fullPath = join(basePath, uploadPath)
 
     const normalizedBase = basePath.split('\\').join('/').toLowerCase()
