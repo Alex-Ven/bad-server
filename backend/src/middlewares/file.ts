@@ -17,7 +17,7 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 // ✅ Безопасная валидация пути загрузки
 const getSafeUploadPath = () => {
     const basePath = join(__dirname, '../public');
-    const uploadPath = process.env.UPLOAD_PATH || 'uploads';
+    const uploadPath = 'uploads';
     const fullPath = join(basePath, uploadPath);
 
     const normalizedBase = basePath.split('\\').join('/').toLowerCase();

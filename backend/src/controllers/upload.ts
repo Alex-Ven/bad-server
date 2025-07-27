@@ -1,73 +1,76 @@
-import { NextFunction, Request, Response } from 'express';
-import fs, { unlinkSync } from 'fs';
-import path from 'path';
-import BadRequestError from '../errors/bad-request-error';
-import { MIN_FILE_SIZE_BYTES } from '../middlewares/file';
-
-// Тип для ответа API
-interface UploadResponse {
-    fileName: string;     // Путь к файлу
-    originalName: string; // Оригинальное имя
-    size: number;        // Размер файла
-    mimeType: string;    // MIME-тип
-}
+import { NextFunction, Request, Response } from 'express'
+import { constants } from 'http2'
+import { unlinkSync } from 'fs'
+import BadRequestError from '../errors/bad-request-error'
+import { MIN_FILE_SIZE_BYTES } from '../middlewares/file'
 
 export const uploadFile = async (
     req: Request,
-    res: Response<UploadResponse>,
+    res: Response,
     next: NextFunction
 ) => {
-    // 1. Проверка наличия файла
-    if (!req.file) {
-        return next(new BadRequestError('Файл не загружен'));
-    }
-
     try {
+        // Проверка наличия файла
+        if (!req.file) {
+            throw new BadRequestError('Файл не загружен')
+        }
         // 2. Проверка минимального размера
         if (req.file.size < MIN_FILE_SIZE_BYTES) {
             throw new BadRequestError(
                 `Размер файла должен быть не менее ${MIN_FILE_SIZE_BYTES / 1024}KB`
-            );
+            )
+        }
+        // Нормализация пути загрузки
+        const uploadPath = (process.env.UPLOAD_PATH || 'uploads').replace(
+            /^\/|\/$/g,
+            ''
+        ) // Удаляем слеши в начале/конце
+
+        // Безопасное формирование пути
+        const fileName = `/${uploadPath}/${req.file.filename}`
+
+        // Проверка безопасности пути
+        if (fileName.includes('..') || fileName.includes('//')) {
+            throw new BadRequestError('Некорректный путь к файлу')
         }
 
-        // Генерация безопасного имени файла (без использования оригинального)
-        const fileExt = req.file.mimetype.split('/')[1] || 'bin';
-        const safeFilename = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-        const uploadDir = path.resolve(process.env.UPLOAD_PATH || 'uploads');
-        const filePath = path.join(uploadDir, safeFilename);
-
-        // Перемещение файла
-        await fs.promises.rename(req.file.path, filePath);
-
-        // Формирование безопасного URL
-        const publicUrl = `/uploads/${safeFilename}`;
-
-        // Отправка JSON-ответа
-        return res.status(201).json({
-            fileName: publicUrl,
-            size: req.file.size,
-            mimeType: req.file.mimetype,
-            originalName: ''
-        });
-
+        // Формирование ответа
+        return res.status(constants.HTTP_STATUS_CREATED).json({
+            success: true,
+            data: {
+                fileName,
+                originalName: req.file.originalname,
+                size: req.file.size,
+                mimetype: req.file.mimetype,
+                downloadUrl: `${process.env.BASE_URL || ''}${fileName}`,
+            },
+        })
     } catch (error) {
-        // Удаление файла в случае ошибки
+        // Удаляем временный файл при ошибке
         if (req.file?.path) {
             try {
-                unlinkSync(req.file.path);
+                unlinkSync(req.file.path)
             } catch (unlinkError) {
-                console.error('Ошибка при удалении файла:', unlinkError);
+                console.error(
+                    'Ошибка при удалении временного файла:',
+                    unlinkError
+                )
             }
         }
 
-        // Обработка ошибок
         if (error instanceof BadRequestError) {
-            return next(error);
+            return next(error)
         }
 
-        const message = error instanceof Error ? error.message : 'Ошибка загрузки файла';
-        return next(new BadRequestError(message));
-    }
-};
+        if (error instanceof Error) {
+            return next(new BadRequestError(error.message))
+        }
 
-export default uploadFile;
+        // Для неизвестных ошибок
+        return next(
+            new BadRequestError('Неизвестная ошибка при загрузке файла')
+        )
+    }
+}
+
+export default uploadFile
