@@ -41,7 +41,7 @@ const storage = multer.diskStorage({
             const safePath = getSafeUploadPath()
             cb(null, safePath)
         } catch (error) {
-            cb(error as Error, '') // Исправлено: передаем Error первым параметром
+            cb(error as Error, '') 
         }
     },
 

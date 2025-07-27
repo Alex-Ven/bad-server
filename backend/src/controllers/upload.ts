@@ -11,16 +11,19 @@ export const uploadFile = async (
         return next(new BadRequestError('Файл не загружен'))
     }
     try {
-        const fileName = process.env.UPLOAD_PATH
-            ? `/${process.env.UPLOAD_PATH}/${req.file.filename}`
-            : `/${req.file?.filename}`
+        // Формируем путь для ответа
+        const uploadPath = process.env.UPLOAD_PATH || '';
+        const fileName = uploadPath
+            ? `/${uploadPath}/${req.file.filename}`
+            : `/${req.file.filename}`;
+
         return res.status(constants.HTTP_STATUS_CREATED).send({
             fileName,
-            originalName: req.file?.originalname,
-        })
+            originalName: req.file.originalname,
+        });
     } catch (error) {
-        return next(error)
+        return next(error);
     }
-}
+};
 
 export default {}
