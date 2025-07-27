@@ -1,35 +1,35 @@
-import { Request, Express } from 'express'
-import multer, { FileFilterCallback } from 'multer'
-import { join } from 'path'
-import { randomUUID } from 'crypto'
-import sanitize from 'sanitize-filename'
-import fs from 'fs'
-import xss from 'xss'
+import { Request, Response, NextFunction, Express } from 'express';
+import multer, { FileFilterCallback } from 'multer';
+import { randomUUID } from 'crypto';
+import sanitize from 'sanitize-filename';
+import fs from 'fs';
+import xss from 'xss';
+import { join } from 'path';
+import BadRequestError from '../errors/bad-request-error';
 
-type DestinationCallback = (error: Error | null, destination: string) => void
-type FileNameCallback = (error: Error | null, filename: string) => void
+type DestinationCallback = (error: Error | null, destination: string) => void;
+type FileNameCallback = (error: Error | null, filename: string) => void;
 
-// ✅ Безопасная валидация пути загрузки
+const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
+
 const getSafeUploadPath = () => {
-    const basePath = join(__dirname, '../public')
-    const uploadPath = process.env.UPLOAD_PATH_TEMP || 'uploads'
-    const fullPath = join(basePath, uploadPath)
+    const basePath = join(__dirname, '../public');
+    const uploadPath = process.env.UPLOAD_PATH_TEMP || 'uploads';
+    const fullPath = join(basePath, uploadPath);
 
-    // Проверка, что путь находится внутри разрешенной директории
-    const normalizedBase = basePath.split('\\').join('/').toLowerCase()
-    const normalizedPath = fullPath.split('\\').join('/').toLowerCase()
+    const normalizedBase = basePath.split('\\').join('/').toLowerCase();
+    const normalizedPath = fullPath.split('\\').join('/').toLowerCase();
 
     if (!normalizedPath.startsWith(normalizedBase)) {
-        throw new Error('Недопустимый путь загрузки')
+        throw new Error('Invalid upload path');
     }
 
-    // Создать директорию если не существует
     if (!fs.existsSync(fullPath)) {
-        fs.mkdirSync(fullPath, { recursive: true })
+        fs.mkdirSync(fullPath, { recursive: true });
     }
 
-    return fullPath
-}
+    return fullPath;
+};
 
 const storage = multer.diskStorage({
     destination: (
@@ -38,10 +38,10 @@ const storage = multer.diskStorage({
         cb: DestinationCallback
     ) => {
         try {
-            const safePath = getSafeUploadPath()
-            cb(null, safePath)
+            const safePath = getSafeUploadPath();
+            cb(null, safePath);
         } catch (error) {
-            cb(error as Error, '') 
+            cb(new Error('Upload path error'), '');
         }
     },
 
@@ -50,14 +50,30 @@ const storage = multer.diskStorage({
         file: Express.Multer.File,
         cb: FileNameCallback
     ) => {
-        // ✅ Безопасное имя файла
-        const sanitizedOriginalName = sanitize(file.originalname)
-        const fileExtension = sanitizedOriginalName.split('.').pop()
-        const timestamp = Date.now()
-        const uniqueFileName = `${timestamp}-${randomUUID()}.${fileExtension}`
-        cb(null, uniqueFileName)
+        try {
+            const originalName = file.originalname;
+            if (
+                originalName.includes('..') ||
+                originalName.startsWith('/') ||
+                originalName.includes('\\') ||
+                originalName.startsWith('.')
+            ) {
+                return cb(new Error('Invalid filename characters'), '');
+            }
+
+            const sanitizedOriginalName = sanitize(originalName);
+            if (!sanitizedOriginalName) {
+                return cb(new Error('Invalid filename after sanitization'), '');
+            }
+            const fileExtension = sanitizedOriginalName.split('.').pop();
+            const timestamp = Date.now();
+            const uniqueFileName = `${timestamp}-${randomUUID()}.${fileExtension}`;
+            cb(null, uniqueFileName);
+        } catch (error) {
+            cb(new Error('Filename generation error'), '');
+        }
     },
-})
+});
 
 const allowedTypes = [
     'image/png',
@@ -65,13 +81,12 @@ const allowedTypes = [
     'image/jpeg',
     'image/gif',
     'image/svg+xml',
-]
+];
 
-// ✅ Дополнительная санитизация SVG
 const sanitizeSVG = (filePath: string): Promise<void> =>
-    new Promise((resolvePromise, reject) => {
+    new Promise((resolve, reject) => {
         fs.readFile(filePath, 'utf8', (err, data) => {
-            if (err) return reject(err)
+            if (err) return reject(err);
 
             const sanitizedContent = xss(data, {
                 whiteList: {
@@ -84,61 +99,90 @@ const sanitizeSVG = (filePath: string): Promise<void> =>
                 },
                 stripIgnoreTag: true,
                 stripIgnoreTagBody: ['script', 'iframe', 'object', 'embed'],
-            })
+            });
 
             fs.writeFile(filePath, sanitizedContent, (writeErr) => {
-                if (writeErr) return reject(writeErr)
-                resolvePromise()
-            })
-        })
-    })
+                if (writeErr) return reject(writeErr);
+                resolve();
+            });
+        });
+    });
 
 const fileFilter = (
     _req: Request,
     file: Express.Multer.File,
     cb: FileFilterCallback
 ) => {
-    // Проверка MIME типа
-    if (!allowedTypes.includes(file.mimetype)) {
-        return cb(null, false) // Первый параметр null для ошибок, второй false для отклонения
+    try {
+        const originalName = file.originalname;
+        if (
+            originalName.includes('..') ||
+            originalName.startsWith('/') ||
+            originalName.includes('\\') ||
+            originalName.startsWith('.')
+        ) {
+            return cb(new Error('Invalid filename characters'));
+        }
+
+        if (!allowedTypes.includes(file.mimetype)) {
+            return cb(new Error('Invalid file type'));
+        }
+
+        const fileExtension = originalName.split('.').pop()?.toLowerCase();
+        const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
+
+        if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
+            return cb(new Error('Invalid file extension'));
+        }
+
+        cb(null, true);
+    } catch (error) {
+        cb(new Error('File validation error'));
     }
+};
 
-    // Дополнительная проверка расширения файла
-    const fileExtension = file.originalname.split('.').pop()?.toLowerCase()
-    const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg']
-
-    if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
-        return cb(null, false)
-    }
-
-    cb(null, true)
-}
-
-// ✅ Middleware для пост-обработки файлов
-const postProcessFile = async (req: Request, _res: any, next: Function) => {
+const postProcessFile = async (req: Request, _res: Response, next: NextFunction) => {
     if (req.file && req.file.mimetype === 'image/svg+xml') {
         try {
-            await sanitizeSVG(req.file.path)
+            await sanitizeSVG(req.file.path);
         } catch (error) {
-            // Удалить опасный файл
             if (req.file?.path) {
-                fs.unlinkSync(req.file.path)
+                fs.unlinkSync(req.file.path);
             }
-            return next(new Error('Ошибка обработки SVG файла'))
+            return next(new BadRequestError('SVG processing error'));
         }
     }
-    next()
-}
+    next();
+};
 
-// ✅ Основной middleware с ограничениями
+const handleMulterError = (err: unknown, _req: Request, _res: Response, next: NextFunction) => {
+    if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            return next(new BadRequestError(`File size exceeds ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB limit`));
+        }
+        if (err.code === 'LIMIT_FILE_COUNT') {
+            return next(new BadRequestError('Too many files'));
+        }
+        if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            return next(new BadRequestError('Unexpected file'));
+        }
+        return next(new BadRequestError(`File upload error: ${err.message}`));
+    }
+    if (err instanceof Error) {
+        return next(new BadRequestError(`File upload error: ${err.message}`));
+    }
+    next(err);
+};
+
 const fileMiddleware = multer({
     storage,
     fileFilter,
     limits: {
-        fileSize: 5 * 1024 * 1024, // 5MB
-        files: 1, // Ограничение количества файлов
+        fileSize: MAX_FILE_SIZE_BYTES,
+        files: 1,
     },
-})
+});
 
-export default fileMiddleware
-export { postProcessFile }
+export { handleMulterError };
+export default fileMiddleware;
+export { postProcessFile };
