@@ -9,42 +9,36 @@ export const uploadFile = async (
     next: NextFunction
 ) => {
     try {
-        // Проверка наличия файла
         if (!req.file) {
             throw new BadRequestError('Файл не загружен');
         }
 
-        // Нормализация пути загрузки
-        const uploadPath = (process.env.UPLOAD_PATH || 'uploads')
-            .replace(/^\/|\/$/g, ''); // Удаляем слеши в начале/конце
+        // Генерируем новое имя файла (без использования оригинального)
+        const timestamp = Date.now();
+        const fileExtension = req.file.originalname.split('.').pop() || '';
+        const newFilename = `${timestamp}-${Math.random().toString(36).substring(2, 9)}.${fileExtension}`;
 
-        // Безопасное формирование пути
-        const fileName = `/${uploadPath}/${req.file.filename}`;
-        
+        // Формируем путь для ответа
+        const uploadDir = process.env.UPLOAD_PATH || 'uploads';
+        const filePath = `/${uploadDir}/${newFilename}`;
+
         // Проверка безопасности пути
-        if (fileName.includes('..') || fileName.includes('//')) {
+        if (filePath.includes('..') || filePath.includes('//')) {
             throw new BadRequestError('Некорректный путь к файлу');
         }
 
-        // Формирование ответа
+        // Возвращаем ответ с новым именем файла
         return res.status(constants.HTTP_STATUS_CREATED).json({
-            success: true,
-            data: {
-                fileName,
-                originalName: req.file.originalname,
-                size: req.file.size,
-                mimetype: req.file.mimetype,
-                downloadUrl: `${process.env.BASE_URL || ''}${fileName}`
-            }
+            fileName: filePath,
+            originalName: req.file.originalname
         });
 
-    } catch (error) {
-        // Удаляем временный файл при ошибке
+    } catch (error: unknown) {
         if (req.file?.path) {
             try {
                 unlinkSync(req.file.path);
             } catch (unlinkError) {
-                console.error('Ошибка при удалении временного файла:', unlinkError);
+                console.error('Ошибка при удалении файла:', unlinkError);
             }
         }
 
@@ -52,12 +46,9 @@ export const uploadFile = async (
             return next(error);
         }
         
-        if (error instanceof Error) {
-            return next(new BadRequestError(error.message));
-        }
-        
-        // Для неизвестных ошибок
-        return next(new BadRequestError('Неизвестная ошибка при загрузке файла'));
+        return next(new BadRequestError(
+            error instanceof Error ? error.message : 'Ошибка загрузки файла'
+        ));
     }
 };
 
