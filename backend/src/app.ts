@@ -10,7 +10,7 @@ import { DB_ADDRESS } from './config'
 import errorHandler from './middlewares/error-handler'
 import serveStatic from './middlewares/serverStatic'
 import routes from './routes'
-import { csrfProtection, handleCsrfError } from './middlewares/csrf'
+import { handleCsrfError } from './middlewares/csrf'
 
 const { PORT = 3000 } = process.env
 const { ORIGIN_ALLOW } = process.env

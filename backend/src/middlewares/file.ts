@@ -1,35 +1,35 @@
-import { Request, Response, NextFunction, Express } from 'express';
-import multer, { FileFilterCallback } from 'multer';
-import { join } from 'path';
-import { randomUUID } from 'crypto';
-import sanitize from 'sanitize-filename';
-import fs from 'fs';
-import xss from 'xss';
-import BadRequestError from '../errors/bad-request-error';
+import { Request, Response, NextFunction, Express } from 'express'
+import multer, { FileFilterCallback } from 'multer'
+import { join } from 'path'
+import { randomUUID } from 'crypto'
+import fs from 'fs'
+import xss from 'xss'
+import BadRequestError from '../errors/bad-request-error'
 
-type DestinationCallback = (error: Error | null, destination: string) => void;
-type FileNameCallback = (error: Error | null, filename: string) => void;
+type DestinationCallback = (error: Error | null, destination: string) => void
+type FileNameCallback = (error: Error | null, filename: string) => void
 
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const MIN_FILE_SIZE_BYTES = 2 * 1024 // 2KB
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 
 const getSafeUploadPath = () => {
-    const basePath = join(__dirname, '../public');
-    const uploadPath = process.env.UPLOAD_PATH_TEMP || 'uploads';
-    const fullPath = join(basePath, uploadPath);
+    const basePath = join(__dirname, '../public')
+    const uploadPath = process.env.UPLOAD_PATH_TEMP || 'uploads'
+    const fullPath = join(basePath, uploadPath)
 
-    const normalizedBase = basePath.split('\\').join('/').toLowerCase();
-    const normalizedPath = fullPath.split('\\').join('/').toLowerCase();
+    const normalizedBase = basePath.split('\\').join('/').toLowerCase()
+    const normalizedPath = fullPath.split('\\').join('/').toLowerCase()
 
     if (!normalizedPath.startsWith(normalizedBase)) {
-        throw new Error('Недопустимый путь загрузки');
+        throw new Error('Недопустимый путь загрузки')
     }
 
     if (!fs.existsSync(fullPath)) {
-        fs.mkdirSync(fullPath, { recursive: true });
+        fs.mkdirSync(fullPath, { recursive: true })
     }
 
-    return fullPath;
-};
+    return fullPath
+}
 
 const storage = multer.diskStorage({
     destination: (
@@ -38,10 +38,10 @@ const storage = multer.diskStorage({
         cb: DestinationCallback
     ) => {
         try {
-            const safePath = getSafeUploadPath();
-            cb(null, safePath);
+            const safePath = getSafeUploadPath()
+            cb(null, safePath)
         } catch (error) {
-            cb(error as Error, '');
+            cb(error as Error, '')
         }
     },
 
@@ -51,29 +51,31 @@ const storage = multer.diskStorage({
         cb: FileNameCallback
     ) => {
         try {
-            const originalName = file.originalname;
-            if (
-                originalName.includes('..') ||
-                originalName.startsWith('/') ||
-                originalName.includes('\\') ||
-                originalName.startsWith('.')
-            ) {
-                return cb(new Error('Имя файла содержит запрещенные символы.'), '');
-            }
+            // Генерируем полностью новое имя файла без использования оригинального
+            const timestamp = Date.now()
+            const uniqueFileName = `${timestamp}-${randomUUID()}`
 
-            const sanitizedOriginalName = sanitize(originalName);
-            if (!sanitizedOriginalName) {
-                 return cb(new Error('Имя файла некорректно после санитизации.'), '');
-            }
-            const fileExtension = sanitizedOriginalName.split('.').pop();
-            const timestamp = Date.now();
-            const uniqueFileName = `${timestamp}-${randomUUID()}.${fileExtension}`;
-            cb(null, uniqueFileName);
+            // Получаем расширение файла из mimetype
+            let extension = ''
+            if (file.mimetype.includes('png')) extension = 'png'
+            else if (
+                file.mimetype.includes('jpeg') ||
+                file.mimetype.includes('jpg')
+            )
+                extension = 'jpg'
+            else if (file.mimetype.includes('gif')) extension = 'gif'
+            else if (file.mimetype.includes('svg')) extension = 'svg'
+            else if (file.mimetype.includes('plain')) extension = 'txt'
+
+            cb(
+                null,
+                extension ? `${uniqueFileName}.${extension}` : uniqueFileName
+            )
         } catch (error) {
-             cb(error as Error, '');
+            cb(error as Error, '')
         }
     },
-});
+})
 
 const allowedTypes = [
     'image/png',
@@ -82,12 +84,12 @@ const allowedTypes = [
     'image/gif',
     'image/svg+xml',
     'text/plain',
-];
+]
 
 const sanitizeSVG = (filePath: string): Promise<void> =>
     new Promise((resolvePromise, reject) => {
         fs.readFile(filePath, 'utf8', (err, data) => {
-            if (err) return reject(err);
+            if (err) return reject(err)
 
             const sanitizedContent = xss(data, {
                 whiteList: {
@@ -100,14 +102,14 @@ const sanitizeSVG = (filePath: string): Promise<void> =>
                 },
                 stripIgnoreTag: true,
                 stripIgnoreTagBody: ['script', 'iframe', 'object', 'embed'],
-            });
+            })
 
             fs.writeFile(filePath, sanitizedContent, (writeErr) => {
-                if (writeErr) return reject(writeErr);
-                resolvePromise();
-            });
-        });
-    });
+                if (writeErr) return reject(writeErr)
+                resolvePromise()
+            })
+        })
+    })
 
 const fileFilter = (
     _req: Request,
@@ -115,69 +117,83 @@ const fileFilter = (
     cb: FileFilterCallback
 ) => {
     try {
-        const originalName = file.originalname;
-        if (
-            originalName.includes('..') ||
-            originalName.startsWith('/') ||
-            originalName.includes('\\') ||
-            originalName.startsWith('.')
-        ) {
-            return cb(new Error('Имя файла содержит запрещенные символы.'));
-        }
-
         if (!allowedTypes.includes(file.mimetype)) {
-            return cb(new Error('Недопустимый тип файла'));
+            return cb(new Error('Недопустимый тип файла'))
         }
 
-        const fileExtension = originalName.split('.').pop()?.toLowerCase();
-        const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'txt'];
-
-        if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
-            return cb(new Error('Недопустимое расширение файла'));
-        }
-
-        cb(null, true);
+        cb(null, true)
     } catch (error) {
-        cb(error as Error);
+        cb(error as Error)
     }
-};
+}
 
-const postProcessFile = async (req: Request, _res: Response, next: NextFunction) => {
+const postProcessFile = async (
+    req: Request,
+    _res: Response,
+    next: NextFunction
+) => {
     if (req.file && req.file.mimetype === 'image/svg+xml') {
         try {
-            await sanitizeSVG(req.file.path);
+            await sanitizeSVG(req.file.path)
         } catch (error) {
             if (req.file?.path) {
                 try {
-                     fs.unlinkSync(req.file.path);
+                    fs.unlinkSync(req.file.path)
                 } catch (unlinkErr) {
-                    console.error('Failed to delete SVG file after sanitization error:', unlinkErr);
+                    console.error(
+                        'Failed to delete SVG file after sanitization error:',
+                        unlinkErr
+                    )
                 }
             }
-            return next(new BadRequestError('Ошибка обработки SVG файла'));
+            return next(new BadRequestError('Ошибка обработки SVG файла'))
         }
     }
-    next();
-};
+    next()
+}
 
-const handleMulterError = (err: any, _req: Request, _res: Response, next: NextFunction) => {
+const handleMulterError = (
+    err: any,
+    _req: Request,
+    _res: Response,
+    next: NextFunction
+) => {
     if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
-            return next(new BadRequestError(`Размер файла превышает допустимый лимит ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} МБ.`));
+            if (err.message.includes('small')) {
+                return next(
+                    new BadRequestError(
+                        `Размер файла должен быть больше ${MIN_FILE_SIZE_BYTES / 1024} KB`
+                    )
+                )
+            }
+            return next(
+                new BadRequestError(
+                    `Размер файла должен быть меньше ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB`
+                )
+            )
         }
         if (err.code === 'LIMIT_FILE_COUNT') {
-            return next(new BadRequestError('Превышено максимальное количество файлов.'));
+            return next(
+                new BadRequestError('Превышено максимальное количество файлов.')
+            )
         }
         if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-            return next(new BadRequestError('Неожиданный файл.'));
+            return next(new BadRequestError('Неожиданный файл.'))
         }
-        return next(new BadRequestError(`Ошибка загрузки файла (multer): ${err.message}`));
+        return next(
+            new BadRequestError(
+                `Ошибка загрузки файла (multer): ${err.message}`
+            )
+        )
     }
     if (err instanceof Error) {
-        return next(new BadRequestError(`Ошибка загрузки файла: ${err.message}`));
+        return next(
+            new BadRequestError(`Ошибка загрузки файла: ${err.message}`)
+        )
     }
-    next(err);
-};
+    next(err)
+}
 
 const fileMiddleware = multer({
     storage,
@@ -186,8 +202,8 @@ const fileMiddleware = multer({
         fileSize: MAX_FILE_SIZE_BYTES,
         files: 1,
     },
-});
+})
 
-export { handleMulterError };
-export default fileMiddleware;
-export { postProcessFile };
+export { handleMulterError }
+export default fileMiddleware
+export { postProcessFile }
