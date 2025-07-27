@@ -1,16 +1,16 @@
 import { Request, Response, NextFunction, Express } from 'express';
 import multer, { FileFilterCallback } from 'multer';
+import { join } from 'path';
 import { randomUUID } from 'crypto';
 import sanitize from 'sanitize-filename';
 import fs from 'fs';
 import xss from 'xss';
-import { join } from 'path';
 import BadRequestError from '../errors/bad-request-error';
 
 type DestinationCallback = (error: Error | null, destination: string) => void;
 type FileNameCallback = (error: Error | null, filename: string) => void;
 
-const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 const getSafeUploadPath = () => {
     const basePath = join(__dirname, '../public');
@@ -21,7 +21,7 @@ const getSafeUploadPath = () => {
     const normalizedPath = fullPath.split('\\').join('/').toLowerCase();
 
     if (!normalizedPath.startsWith(normalizedBase)) {
-        throw new Error('Invalid upload path');
+        throw new Error('Недопустимый путь загрузки');
     }
 
     if (!fs.existsSync(fullPath)) {
@@ -41,7 +41,7 @@ const storage = multer.diskStorage({
             const safePath = getSafeUploadPath();
             cb(null, safePath);
         } catch (error) {
-            cb(new Error('Upload path error'), '');
+            cb(error as Error, '');
         }
     },
 
@@ -58,19 +58,19 @@ const storage = multer.diskStorage({
                 originalName.includes('\\') ||
                 originalName.startsWith('.')
             ) {
-                return cb(new Error('Invalid filename characters'), '');
+                return cb(new Error('Имя файла содержит запрещенные символы.'), '');
             }
 
             const sanitizedOriginalName = sanitize(originalName);
             if (!sanitizedOriginalName) {
-                return cb(new Error('Invalid filename after sanitization'), '');
+                 return cb(new Error('Имя файла некорректно после санитизации.'), '');
             }
             const fileExtension = sanitizedOriginalName.split('.').pop();
             const timestamp = Date.now();
             const uniqueFileName = `${timestamp}-${randomUUID()}.${fileExtension}`;
             cb(null, uniqueFileName);
         } catch (error) {
-            cb(new Error('Filename generation error'), '');
+             cb(error as Error, '');
         }
     },
 });
@@ -81,10 +81,11 @@ const allowedTypes = [
     'image/jpeg',
     'image/gif',
     'image/svg+xml',
+    'text/plain',
 ];
 
 const sanitizeSVG = (filePath: string): Promise<void> =>
-    new Promise((resolve, reject) => {
+    new Promise((resolvePromise, reject) => {
         fs.readFile(filePath, 'utf8', (err, data) => {
             if (err) return reject(err);
 
@@ -103,7 +104,7 @@ const sanitizeSVG = (filePath: string): Promise<void> =>
 
             fs.writeFile(filePath, sanitizedContent, (writeErr) => {
                 if (writeErr) return reject(writeErr);
-                resolve();
+                resolvePromise();
             });
         });
     });
@@ -121,23 +122,23 @@ const fileFilter = (
             originalName.includes('\\') ||
             originalName.startsWith('.')
         ) {
-            return cb(new Error('Invalid filename characters'));
+            return cb(new Error('Имя файла содержит запрещенные символы.'));
         }
 
         if (!allowedTypes.includes(file.mimetype)) {
-            return cb(new Error('Invalid file type'));
+            return cb(new Error('Недопустимый тип файла'));
         }
 
         const fileExtension = originalName.split('.').pop()?.toLowerCase();
-        const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
+        const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'txt'];
 
         if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
-            return cb(new Error('Invalid file extension'));
+            return cb(new Error('Недопустимое расширение файла'));
         }
 
         cb(null, true);
     } catch (error) {
-        cb(new Error('File validation error'));
+        cb(error as Error);
     }
 };
 
@@ -147,29 +148,33 @@ const postProcessFile = async (req: Request, _res: Response, next: NextFunction)
             await sanitizeSVG(req.file.path);
         } catch (error) {
             if (req.file?.path) {
-                fs.unlinkSync(req.file.path);
+                try {
+                     fs.unlinkSync(req.file.path);
+                } catch (unlinkErr) {
+                    console.error('Failed to delete SVG file after sanitization error:', unlinkErr);
+                }
             }
-            return next(new BadRequestError('SVG processing error'));
+            return next(new BadRequestError('Ошибка обработки SVG файла'));
         }
     }
     next();
 };
 
-const handleMulterError = (err: unknown, _req: Request, _res: Response, next: NextFunction) => {
+const handleMulterError = (err: any, _req: Request, _res: Response, next: NextFunction) => {
     if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
-            return next(new BadRequestError(`File size exceeds ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB limit`));
+            return next(new BadRequestError(`Размер файла превышает допустимый лимит ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} МБ.`));
         }
         if (err.code === 'LIMIT_FILE_COUNT') {
-            return next(new BadRequestError('Too many files'));
+            return next(new BadRequestError('Превышено максимальное количество файлов.'));
         }
         if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-            return next(new BadRequestError('Unexpected file'));
+            return next(new BadRequestError('Неожиданный файл.'));
         }
-        return next(new BadRequestError(`File upload error: ${err.message}`));
+        return next(new BadRequestError(`Ошибка загрузки файла (multer): ${err.message}`));
     }
     if (err instanceof Error) {
-        return next(new BadRequestError(`File upload error: ${err.message}`));
+        return next(new BadRequestError(`Ошибка загрузки файла: ${err.message}`));
     }
     next(err);
 };
