@@ -49,10 +49,13 @@ app.use(urlencoded({ extended: true }))
 app.use(json())
 
 app.options('*', cors())
-app.use(routes)
-app.use(errors())
+
 // ✅ Добавляем обработчик ошибок CSRF (до основных роутов)
 app.use(handleCsrfError)
+
+app.use(routes)
+app.use(errors())
+
 app.use(errorHandler)
 
 // eslint-disable-next-line no-console
