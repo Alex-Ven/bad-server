@@ -116,20 +116,31 @@ const fileFilter: (
     file: Express.Multer.File,
     callback: FileFilterCallback
 ) => void = (_req, file, callback) => {
-    // Проверка MIME-типа
+    // Строгая проверка MIME-типа
     if (!allowedTypes.includes(file.mimetype)) {
-        return callback(new Error('Недопустимый тип файла')); // Multer ожидает только Error
+        return callback(new BadRequestError('Недопустимый тип файла'));
     }
 
-    // Проверка расширения файла
+    // Проверка соответствия MIME-типа и расширения
     const ext = file.originalname.split('.').pop()?.toLowerCase();
-    if (!ext || !['png', 'jpg', 'jpeg', 'gif'].includes(ext)) {
-        return callback(new Error('Недопустимое расширение файла'));
+    const expectedMimeToExt: { [key: string]: string | string[] } = {
+        'image/png': 'png',
+        'image/jpeg': ['jpg', 'jpeg'],
+        'image/jpg': 'jpg',
+        'image/gif': 'gif',
+        // 'image/svg+xml': 'svg',
+        // 'text/plain': 'txt',
+    };
+
+    const expectedExt = expectedMimeToExt[file.mimetype];
+
+    if (!ext || !(Array.isArray(expectedExt) ? expectedExt.includes(ext) : ext === expectedExt)) {
+        return callback(new BadRequestError('Несоответствие MIME-типа и расширения файла'));
     }
 
-    // Успешный случай
-    return callback(null, true);
+    callback(null, true);
 };
+
 
 const postProcessFile = async (
     req: Request,
