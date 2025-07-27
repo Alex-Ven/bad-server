@@ -130,6 +130,7 @@ const fileFilter = (
 
         cb(null, true);
     } catch (error) {
+        console.error("Error in fileFilter:", error);
         cb(error as Error);
     }
 };
@@ -155,6 +156,7 @@ const postProcessFile = async (req: Request, _res: Response, next: NextFunction)
 
 // Обработчик ошибок multer для интеграции с вашей системой ошибок
 const handleMulterError = (err: any, _req: Request, _res: Response, next: NextFunction) => {
+    console.error("handleMulterError received:", err);
     if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
             return next(new BadRequestError(`Размер файла превышает допустимый лимит ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} МБ.`));
