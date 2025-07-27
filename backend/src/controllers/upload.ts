@@ -14,6 +14,23 @@ export const uploadFile = async (
     }
 
     try {
+        const allowedMimeTypes = [
+            'image/png',
+            'image/jpg',
+            'image/jpeg',
+            'image/gif',
+            'image/svg+xml',
+            'text/plain',
+        ]
+        if (!allowedMimeTypes.includes(req.file.mimetype)) {
+            throw new BadRequestError('Недопустимый тип файла')
+        }
+
+        // Проверка расширения
+        const ext = req.file.originalname.split('.').pop()?.toLowerCase()
+        if (!ext || !['png', 'jpg', 'jpeg', 'gif'].includes(ext)) {
+            throw new BadRequestError('Недопустимое расширение файла')
+        }
         // Проверка размера файла
         if (req.file.size < MIN_FILE_SIZE_BYTES) {
             throw new BadRequestError(
