@@ -1,6 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { constants } from 'http2';
-import { unlinkSync, renameSync } from 'fs';
+import fs, { unlinkSync } from 'fs';
 import path from 'path';
 import BadRequestError from '../errors/bad-request-error';
 import { MIN_FILE_SIZE_BYTES } from '../middlewares/file';
@@ -31,31 +30,24 @@ export const uploadFile = async (
             );
         }
 
-        // 3. Генерация безопасного имени файла
-        const timestamp = Date.now();
-        const randomString = Math.random().toString(36).substring(2, 9);
-        const safeExtension = path.extname(req.file.originalname).toLowerCase();
-        const newFilename = `${timestamp}-${randomString}${safeExtension}`;
+        // Генерация безопасного имени файла (без использования оригинального)
+        const fileExt = req.file.mimetype.split('/')[1] || 'bin';
+        const safeFilename = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const uploadDir = path.resolve(process.env.UPLOAD_PATH || 'uploads');
+        const filePath = path.join(uploadDir, safeFilename);
 
-        // 4. Определение путей
-        const uploadDir = process.env.UPLOAD_PATH || 'uploads';
-        const newPath = path.join(uploadDir, newFilename);
-        const publicPath = `/${uploadDir}/${newFilename}`;
+        // Перемещение файла
+        await fs.promises.rename(req.file.path, filePath);
 
-        // 5. Проверка безопасности путей
-        if (!path.isAbsolute(uploadDir)) {
-            throw new BadRequestError('Некорректный путь загрузки');
-        }
+        // Формирование безопасного URL
+        const publicUrl = `/uploads/${safeFilename}`;
 
-        // 6. Переименование файла
-        renameSync(req.file.path, newPath);
-
-        // 7. Отправка ответа
-        return res.status(constants.HTTP_STATUS_CREATED).json({
-            fileName: publicPath,
-            originalName: req.file.originalname,
+        // Отправка JSON-ответа
+        return res.status(201).json({
+            fileName: publicUrl,
             size: req.file.size,
-            mimeType: req.file.mimetype
+            mimeType: req.file.mimetype,
+            originalName: ''
         });
 
     } catch (error) {

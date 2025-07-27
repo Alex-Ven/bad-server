@@ -124,6 +124,10 @@ const fileFilter = (
             return cb(new BadRequestError('Недопустимый тип файла'));
         }
 
+        if (file.originalname.includes('..') || file.originalname.includes('/')) {
+            return cb(new BadRequestError('Имя файла содержит недопустимые символы'));
+        }
+
         cb(null, true);
     } catch (error) {
         cb(error as Error);
