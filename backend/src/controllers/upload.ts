@@ -10,7 +10,7 @@ export const uploadFile = async (
     next: NextFunction
 ) => {
     if (!req.file) {
-        return next(new BadRequestError('Файл не загружен'))
+        return next(new BadRequestError('Файл не загружен'));
     }
 
     try {
@@ -18,53 +18,37 @@ export const uploadFile = async (
         if (req.file.size < MIN_FILE_SIZE_BYTES) {
             throw new BadRequestError(
                 `Размер файла должен быть не менее ${MIN_FILE_SIZE_BYTES / 1024}KB`
-            )
+            );
         }
 
-
-        // Генерируем новое имя файла (без использования оригинального)
-        const timestamp = Date.now();
-        const fileExtension = req.file.originalname.split('.').pop() || '';
-        const newFilename = `${timestamp}-${Math.random().toString(36).substring(2, 9)}.${fileExtension}`;
-
-        // Формируем путь для ответа
+        // Используем имя файла из middleware (уже безопасное)
         const uploadDir = process.env.UPLOAD_PATH || 'uploads';
-        const filePath = `/${uploadDir}/${newFilename}`;
+        const fileName = `/${uploadDir}/${req.file.filename}`;
 
         // Проверка безопасности пути
-        if (filePath.includes('..') || filePath.includes('//')) {
+        if (fileName.includes('..') || fileName.includes('//')) {
             throw new BadRequestError('Некорректный путь к файлу');
         }
 
-        // Формирование полного ответа
         return res.status(constants.HTTP_STATUS_CREATED).json({
             success: true,
             data: {
-                newFilename,
+                fileName,
                 originalName: req.file.originalname,
                 size: req.file.size,
                 mimetype: req.file.mimetype,
-                downloadUrl: `${process.env.BASE_URL || ''}${newFilename}`,
+                downloadUrl: `${process.env.BASE_URL || ''}${fileName}`,
             },
-        })
-
-    } catch (error: unknown) {
+        });
+    } catch (error) {
         if (req.file?.path) {
-            try {
-                unlinkSync(req.file.path);
-            } catch (unlinkError) {
-                console.error('Ошибка при удалении файла:', unlinkError);
-            }
+            try { unlinkSync(req.file.path); } 
+            catch (err) { console.error('Ошибка удаления файла:', err); }
         }
 
-        if (error instanceof BadRequestError) {
-            return next(error);
-        }
+        if (error instanceof BadRequestError) return next(error);
         
-        return next(new BadRequestError(
-            error instanceof Error ? error.message : 'Ошибка загрузки файла'
-        ));
+        const message = error instanceof Error ? error.message : 'Ошибка загрузки файла';
+        return next(new BadRequestError(message));
     }
 };
-
-export default uploadFile;
