@@ -11,14 +11,14 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
     // Обработка TooManyRequestsError (429)
     if (err instanceof TooManyRequestsError) {
         res.setHeader('Retry-After', String(err.retryAfter)) // Устанавливаем заголовок
-        return res.status(429).send({
+        return res.status(429).json({
             message,
             retryAfter: err.retryAfter, // Опционально: отправляем время в теле ответа
         })
     }
 
     // Стандартная обработка остальных ошибок
-    res.status(statusCode).send({ message })
+    res.status(statusCode).json({ message })
 
     next()
 }
