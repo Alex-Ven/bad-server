@@ -3,24 +3,7 @@ import { Request } from 'express'
 import Redis from 'ioredis'
 import TooManyRequestsError from '../errors/too-many-requests-error'
 
-// ✅ Хелпер функция для безопасного получения user ID
-const getUserId = (req: Request): string | undefined =>
-    (req as any).user?._id || (req as any).user?.id
-
-// ✅ Функция для получения IP-адреса, совместимая с express-rate-limit
-const ipKeyGenerator = (req: Request): string => {
-    if (req.ip) return req.ip
-    if (req.connection?.remoteAddress) return req.connection.remoteAddress
-    if (req.socket?.remoteAddress) return req.socket.remoteAddress
-    if (req.headers['x-forwarded-for']) {
-        const forwardedIps = (req.headers['x-forwarded-for'] as string).split(
-            ','
-        )
-        return forwardedIps[0]?.trim() || 'unknown'
-    }
-    return 'unknown'
-}
-
+// Конфигурация Redis
 const redis = new Redis({
     host: process.env.REDIS_HOST || 'redis',
     port: 6379,
@@ -31,125 +14,124 @@ redis.on('error', (err) => {
     console.error('Redis error (rate-limit):', err)
 })
 
-export const loginLimiter = rateLimit({
+// Хелпер-функции
+const getUserId = (req: Request): string | undefined =>
+    (req as any).user?._id || (req as any).user?.id
+
+// ✅ Исправлено: getClientIdentifier теперь напрямую извлекает IP из req
+const getClientIdentifier = (req: Request): string => {
+    try {
+        // 1. Попробуем получить IP напрямую из req
+        if (req.ip) return req.ip;
+        if (req.connection?.remoteAddress) return req.connection.remoteAddress;
+        if (req.socket?.remoteAddress) return req.socket.remoteAddress;
+        
+        // 2. Попробуем из заголовков
+        if (req.headers['x-forwarded-for']) {
+            const forwardedIps = (req.headers['x-forwarded-for'] as string).split(',');
+            return forwardedIps[0]?.trim() || 'unknown';
+        }
+        if (req.headers['x-real-ip']) {
+            return (req.headers['x-real-ip'] as string).trim() || 'unknown';
+        }
+        
+        // 3. Если ничего не удалось, возвращаем 'unknown'
+        console.warn('Could not determine client IP address');
+        return 'unknown';
+    } catch (error) {
+        console.warn('Failed to generate IP key:', error);
+        return 'unknown';
+    }
+};
+
+const createLimiter = (options: {
+    windowMs: number
+    max: number
+    keyPrefix: string
+    errorMessage: string
+    errorTimeout: number
+    useUserId?: boolean
+    useEmail?: boolean
+}) => {
+    return rateLimit({
+        windowMs: options.windowMs,
+        max: options.max,
+        keyGenerator: (req: Request) => {
+            if (options.useEmail && req.body?.email) {
+                return `${options.keyPrefix}:email:${req.body.email.toLowerCase().trim()}`
+            }
+            if (options.useUserId) {
+                const userId = getUserId(req)
+                if (userId) return `${options.keyPrefix}:user:${userId}`
+            }
+            // Используем исправленную функцию getClientIdentifier
+            return `${options.keyPrefix}:ip:${getClientIdentifier(req)}`
+        },
+        handler: (_req: Request, _res, next) => {
+            next(new TooManyRequestsError(options.errorMessage, options.errorTimeout))
+        },
+        standardHeaders: true,
+        legacyHeaders: false,
+        // ✅ Добавлен store для Redis (опционально, но рекомендуется для production)
+        // store: new RedisStore({ 
+        //     sendCommand: (...args: string[]) => redis.sendCommand(args),
+        //     prefix: options.keyPrefix,
+        // }),
+    })
+}
+
+// Лимитеры
+export const loginLimiter = createLimiter({
     windowMs: 15 * 60 * 1000, // 15 минут
-    max: 5, // максимум 5 попыток
-    keyGenerator: (req: Request) => {
-        if (req.body?.email && typeof req.body.email === 'string') {
-            return req.body.email
-        }
-        return ipKeyGenerator(req)
-    },
-    handler: (req: Request, _res, next) => {
-        const { email } = req.body
-        if (email && typeof email === 'string') {
-            redis
-                .setex(`login:block:${email}`, 15 * 60, '1')
-                .catch((err) => console.error('Redis setex error:', err))
-        }
-        next(new TooManyRequestsError('Попробуйте позже', 900))
-    },
+    max: 5,
+    keyPrefix: 'login',
+    errorMessage: 'Слишком много попыток входа. Попробуйте позже',
+    errorTimeout: 900,
+    useEmail: true,
 })
 
-/// ✅ Rate limiter для критических операций
-export const sensitiveOperationLimiter = rateLimit({
+export const sensitiveOperationLimiter = createLimiter({
     windowMs: 15 * 60 * 1000, // 15 минут
-    max: 3, // максимум 3 попытки
-    keyGenerator: ipKeyGenerator,
-    handler: (_req: Request, _res, next) => {
-        next(
-            new TooManyRequestsError(
-                'Слишком много критических операций. Попробуйте позже',
-                900
-            )
-        )
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
+    max: 3,
+    keyPrefix: 'sensitive',
+    errorMessage: 'Слишком много критических операций. Попробуйте позже',
+    errorTimeout: 900,
 })
 
-// ✅ Rate limiter для создания заказов
-export const orderCreationLimiter = rateLimit({
+export const orderCreationLimiter = createLimiter({
     windowMs: 60 * 60 * 1000, // 1 час
-    max: 10, // максимум 10 заказов в час
-    keyGenerator: (req: Request) => {
-        const userId = getUserId(req)
-        if (userId) {
-            return `order:user:${userId}`
-        }
-        return `order:ip:${ipKeyGenerator(req)}`
-    },
-    handler: (_req: Request, _res, next) => {
-        next(
-            new TooManyRequestsError(
-                'Превышен лимит создания заказов. Попробуйте позже',
-                3600
-            )
-        )
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
+    max: 10,
+    keyPrefix: 'order',
+    errorMessage: 'Превышен лимит создания заказов. Попробуйте позже',
+    errorTimeout: 3600,
+    useUserId: true,
 })
 
-// ✅ Rate limiter для регистрации
-export const registrationLimiter = rateLimit({
+export const registrationLimiter = createLimiter({
     windowMs: 60 * 60 * 1000, // 1 час
-    max: 3, // максимум 3 регистрации в час
-    keyGenerator: (req: Request) => {
-        if (req.body?.email && typeof req.body.email === 'string') {
-            const sanitizedEmail = req.body.email.toLowerCase().trim()
-            return `register:email:${sanitizedEmail}`
-        }
-        return `register:ip:${ipKeyGenerator(req)}`
-    },
-    handler: (_req: Request, _res, next) => {
-        next(
-            new TooManyRequestsError(
-                'Превышен лимит регистраций. Попробуйте позже',
-                3600
-            )
-        )
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
+    max: 3,
+    keyPrefix: 'register',
+    errorMessage: 'Превышен лимит регистраций. Попробуйте позже',
+    errorTimeout: 3600,
+    useEmail: true,
 })
 
-// ✅ Rate limiter для загрузки файлов
-export const uploadLimiter = rateLimit({
+export const uploadLimiter = createLimiter({
     windowMs: 60 * 60 * 1000, // 1 час
-    max: 20, // максимум 20 загрузок в час
-    keyGenerator: (req: Request) => {
-        const userId = getUserId(req)
-        if (userId) {
-            return `upload:user:${userId}`
-        }
-        return `upload:ip:${ipKeyGenerator(req)}`
-    },
-    handler: (_req: Request, _res, next) => {
-        next(
-            new TooManyRequestsError(
-                'Превышен лимит загрузок файлов. Попробуйте позже',
-                3600
-            )
-        )
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
+    max: 20,
+    keyPrefix: 'upload',
+    errorMessage: 'Превышен лимит загрузок файлов. Попробуйте позже',
+    errorTimeout: 3600,
+    useUserId: true,
 })
 
-// ✅ Rate limiter для общих API запросов (например, для /customers)
-export const apiRateLimiter = rateLimit({
+export const apiRateLimiter = createLimiter({
     windowMs: 1 * 60 * 1000, // 1 минута
-    max: 5, // максимум 5 запросов
-    keyGenerator: ipKeyGenerator, // ✅ Корректно
-    handler: (_req: Request, _res, next) => {
-        next(
-            new TooManyRequestsError(
-                'Слишком много запросов к API. Попробуйте позже.',
-                60
-            )
-        )
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
+    max: 5, // Или ваше значение
+    keyPrefix: 'api',
+    errorMessage: 'Слишком много запросов к API. Попробуйте позже',
+    errorTimeout: 60,
 })
+
+// ✅ Экспортируем функцию getClientIdentifier, если она нужна в других местах
+export { getClientIdentifier };
