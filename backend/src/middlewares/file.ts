@@ -82,8 +82,8 @@ const allowedTypes = [
     'image/jpg',
     'image/jpeg',
     'image/gif',
-    // 'image/svg+xml',
-    // 'text/plain',
+    'image/svg+xml',
+    'text/plain',
 ]
 
 const sanitizeSVG = (filePath: string): Promise<void> =>
@@ -111,35 +111,22 @@ const sanitizeSVG = (filePath: string): Promise<void> =>
         })
     })
 
-const fileFilter: (
-    req: Request,
+const fileFilter = (
+    _req: Request,
     file: Express.Multer.File,
-    callback: FileFilterCallback
-) => void = (_req, file, callback) => {
-    // Строгая проверка MIME-типа
-    if (!allowedTypes.includes(file.mimetype)) {
-        return callback(new BadRequestError('Недопустимый тип файла'));
+    cb: FileFilterCallback
+) => {
+    try {
+        if (!allowedTypes.includes(file.mimetype)) {
+            return cb(new Error('Недопустимый тип файла'))
+        }
+
+        cb(null, true)
+    } catch (error) {
+        cb(error as Error)
     }
+}
 
-    // Проверка соответствия MIME-типа и расширения
-    const ext = file.originalname.split('.').pop()?.toLowerCase();
-    const expectedMimeToExt: { [key: string]: string | string[] } = {
-        'image/png': 'png',
-        'image/jpeg': ['jpg', 'jpeg'],
-        'image/jpg': 'jpg',
-        'image/gif': 'gif',
-        // 'image/svg+xml': 'svg',
-        // 'text/plain': 'txt',
-    };
-
-    const expectedExt = expectedMimeToExt[file.mimetype];
-
-    if (!ext || !(Array.isArray(expectedExt) ? expectedExt.includes(ext) : ext === expectedExt)) {
-        return callback(new BadRequestError('Несоответствие MIME-типа и расширения файла'));
-    }
-
-    callback(null, true);
-};
 
 
 const postProcessFile = async (
