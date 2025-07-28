@@ -8,6 +8,7 @@ import orderRouter from './order'
 import productRouter from './product'
 import uploadRouter from './upload'
 import webRouter from './web'
+import { sensitiveOperationLimiter } from '../middlewares/rateLimiter'
 
 const router = Router()
 
@@ -15,7 +16,7 @@ router.use('/auth', authRouter)
 router.use('/product', productRouter)
 router.use('/order', auth, orderRouter)
 router.use('/upload', auth, uploadRouter)
-router.use('/customers', auth, customerRouter)
+router.use('/customers', sensitiveOperationLimiter, auth, customerRouter)
 
 // ✅ Веб-формы с CSRF защитой
 router.use('/web', webRouter) // ✅ Здесь применяется CSRF защита
