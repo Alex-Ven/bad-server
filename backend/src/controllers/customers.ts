@@ -1,21 +1,32 @@
 import { NextFunction, Request, Response } from 'express'
 import { FilterQuery } from 'mongoose'
+import BadRequestError from '../errors/bad-request-error'
 import NotFoundError from '../errors/not-found-error'
 import Order from '../models/order'
 import User, { IUser } from '../models/user'
+import escapeRegExp from '../utils/escapeRegExp'
 
-// TODO: Добавить guard admin
-// eslint-disable-next-line max-len
-// Get GET /customers?page=2&limit=5&sort=totalAmount&order=desc&registrationDateFrom=2023-01-01&registrationDateTo=2023-12-31&lastOrderDateFrom=2023-01-01&lastOrderDateTo=2023-12-31&totalAmountFrom=100&totalAmountTo=1000&orderCountFrom=1&orderCountTo=10
+const MAX_LIMIT = 10
 export const getCustomers = async (
     req: Request,
     res: Response,
     next: NextFunction
 ) => {
     try {
+        let limitValue = Number(req.query.limit) || 10
+        if (Number.isNaN(limitValue) || limitValue <= 0) {
+            limitValue = 10
+        }
+
+        const limit = Math.min(limitValue, MAX_LIMIT)
+
+        let pageValue = Number(req.query.page) || 1
+        if (Number.isNaN(pageValue) || pageValue < 1) {
+            pageValue = 1
+        }
+        const page = pageValue
+
         const {
-            page = 1,
-            limit = 10,
             sortField = 'createdAt',
             sortOrder = 'desc',
             registrationDateFrom,
@@ -64,10 +75,10 @@ export const getCustomers = async (
         }
 
         if (totalAmountFrom) {
-            filters.totalAmount = {
-                ...filters.totalAmount,
-                $gte: Number(totalAmountFrom),
-            }
+            const amount = Number(totalAmountFrom)
+            if (Number.isNaN(amount))
+                throw new BadRequestError('Неверный формат суммы')
+            filters.totalAmount = { ...filters.totalAmount, $gte: amount }
         }
 
         if (totalAmountTo) {
@@ -92,13 +103,27 @@ export const getCustomers = async (
         }
 
         if (search) {
-            const searchRegex = new RegExp(search as string, 'i')
+            // 1. Проверка длины поискового запроса
+            const searchStr = search as string
+            if (searchStr.length > 50) {
+                throw new BadRequestError(
+                    'Поисковый запрос слишком длинный (максимум 50 символов)'
+                )
+            }
+
+            // 2. Экранирование специальных символов
+            const safeSearch = escapeRegExp(searchStr)
+
+            // 3. Создание регулярного выражения с таймаутом (Node.js 16+)
+            const searchRegex = new RegExp(safeSearch, 'i')
+
+            // 4. Добавляем ограничение по времени выполнения для MongoDB
             const orders = await Order.find(
                 {
                     $or: [{ deliveryAddress: searchRegex }],
                 },
                 '_id'
-            )
+            ).maxTimeMS(1000) // Ограничение 1 секунда на выполнение запроса
 
             const orderIds = orders.map((order) => order._id)
 
@@ -116,8 +141,8 @@ export const getCustomers = async (
 
         const options = {
             sort,
-            skip: (Number(page) - 1) * Number(limit),
-            limit: Number(limit),
+            skip: (page - 1) * limit,
+            limit,
         }
 
         const users = await User.find(filters, null, options).populate([
@@ -137,15 +162,15 @@ export const getCustomers = async (
         ])
 
         const totalUsers = await User.countDocuments(filters)
-        const totalPages = Math.ceil(totalUsers / Number(limit))
+        const totalPages = Math.ceil(totalUsers / limit)
 
         res.status(200).json({
             customers: users,
             pagination: {
                 totalUsers,
                 totalPages,
-                currentPage: Number(page),
-                pageSize: Number(limit),
+                currentPage: page,
+                pageSize: limit,
             },
         })
     } catch (error) {
@@ -153,7 +178,6 @@ export const getCustomers = async (
     }
 }
 
-// TODO: Добавить guard admin
 // Get /customers/:id
 export const getCustomerById = async (
     req: Request,
@@ -171,7 +195,6 @@ export const getCustomerById = async (
     }
 }
 
-// TODO: Добавить guard admin
 // Patch /customers/:id
 export const updateCustomer = async (
     req: Request,
@@ -199,7 +222,6 @@ export const updateCustomer = async (
     }
 }
 
-// TODO: Добавить guard admin
 // Delete /customers/:id
 export const deleteCustomer = async (
     req: Request,

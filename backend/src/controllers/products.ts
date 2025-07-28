@@ -58,7 +58,7 @@ const createProduct = async (
             price,
             title,
         })
-        return res.status(constants.HTTP_STATUS_CREATED).send(product)
+        return res.status(constants.HTTP_STATUS_CREATED).json(product)
     } catch (error) {
         if (error instanceof MongooseError.ValidationError) {
             return next(new BadRequestError(error.message))
@@ -72,7 +72,6 @@ const createProduct = async (
     }
 }
 
-// TODO: Добавить guard admin
 // PUT /product
 const updateProduct = async (
     req: Request,
@@ -120,7 +119,6 @@ const updateProduct = async (
     }
 }
 
-// TODO: Добавить guard admin
 // DELETE /product
 const deleteProduct = async (
     req: Request,

@@ -114,7 +114,7 @@ const Filter = ({
                 setSelects({ ...selects, status })
             }
         }
-    }, [defaultValue])
+    }, [defaultValue, selects])
 
     return (
         <Form
