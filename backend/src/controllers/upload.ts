@@ -29,6 +29,7 @@ export const uploadFile = async (
         if (fileName.includes('..') || fileName.includes('//')) {
             throw new BadRequestError('Некорректный путь к файлу')
         }
+
         // Формирование ответа
         return res.status(constants.HTTP_STATUS_CREATED).json({
             fileName, // Обязательное поле для тестов
@@ -50,9 +51,11 @@ export const uploadFile = async (
             return next(error)
         }
 
-        const message =
-            error instanceof Error ? error.message : 'Ошибка загрузки файла'
-        return next(new BadRequestError(message))
+        return next(
+            new BadRequestError(
+                error instanceof Error ? error.message : 'Ошибка загрузки файла'
+            )
+        )
     }
 }
 
