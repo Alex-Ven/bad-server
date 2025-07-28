@@ -41,7 +41,7 @@ export const validateOrderBody = celebrate({
         address: Joi.string().required().min(5).max(500).messages({
             'string.max': 'Адрес должен быть не более 500 символов',
             'string.min': 'Адрес должен быть не менее 5 символов',
-         }),
+        }),
         total: Joi.number().required().messages({
             'string.empty': 'Не указана сумма заказа',
         }),
@@ -52,7 +52,6 @@ export const validateOrderBody = celebrate({
 })
 
 // валидация товара.
-// name и link - обязательные поля, name - от 2 до 30 символов, link - валидный url
 export const validateProductBody = celebrate({
     body: Joi.object().keys({
         title: Joi.string().required().min(2).max(30).messages({

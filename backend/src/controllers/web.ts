@@ -3,7 +3,6 @@ import Order from '../models/order'
 import User, { IUser } from '../models/user'
 import BadRequestError from '../errors/bad-request-error'
 
-// ✅ Предполагаем, что в модели User есть метод comparePassword
 interface UserWithMethods extends IUser {
     comparePassword: (password: string) => Promise<boolean>
 }

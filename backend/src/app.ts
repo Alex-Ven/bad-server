@@ -5,7 +5,7 @@ import 'dotenv/config'
 import express, { json, urlencoded } from 'express'
 import mongoose from 'mongoose'
 import path from 'path'
-import session from 'express-session';
+import session from 'express-session'
 import { DB_ADDRESS } from './config'
 import errorHandler from './middlewares/error-handler'
 import serveStatic from './middlewares/serverStatic'
@@ -14,7 +14,9 @@ import { handleCsrfError } from './middlewares/csrf'
 
 const { PORT = 3000 } = process.env
 const { ORIGIN_ALLOW } = process.env
-const SESSION_SECRET = process.env.SESSION_SECRET || 'your_very_secret_key_here_at_least_32_characters_long';
+const SESSION_SECRET =
+    process.env.SESSION_SECRET ||
+    'your_very_secret_key_here_at_least_32_characters_long'
 const app = express()
 
 app.use(
@@ -26,10 +28,10 @@ app.use(
             secure: process.env.NODE_ENV === 'production',
             httpOnly: true,
             sameSite: 'strict',
-            maxAge: 1000 * 60 * 60 * 24 * 7
+            maxAge: 1000 * 60 * 60 * 24 * 7,
         },
     })
-);
+)
 
 app.use(cookieParser())
 
@@ -56,15 +58,15 @@ app.use(errors())
 
 app.use(errorHandler)
 
-// eslint-disable-next-line no-console
-
 const bootstrap = async () => {
     try {
         await mongoose.connect(DB_ADDRESS)
-        await app.listen(PORT, () => console.log(`ok, server running on port ${PORT}`))
+        await app.listen(PORT, () =>
+            console.log(`ok, server running on port ${PORT}`)
+        )
     } catch (error) {
-        console.error('Failed to start server:', error);
-        process.exit(1);
+        console.error('Failed to start server:', error)
+        process.exit(1)
     }
 }
 

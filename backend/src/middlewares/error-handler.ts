@@ -1,19 +1,17 @@
 import { ErrorRequestHandler } from 'express'
-import TooManyRequestsError from '../errors/too-many-requests-error' // Импортируем кастомную ошибку
+import TooManyRequestsError from '../errors/too-many-requests-error'
 
 const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
     const statusCode = err.statusCode || 500
     const message =
         statusCode === 500 ? 'На сервере произошла ошибка' : err.message
 
-    console.log(err) // Логируем ошибку для дебага
-
     // Обработка TooManyRequestsError (429)
     if (err instanceof TooManyRequestsError) {
-        res.setHeader('Retry-After', String(err.retryAfter)) // Устанавливаем заголовок
+        res.setHeader('Retry-After', String(err.retryAfter))
         return res.status(429).json({
             message,
-            retryAfter: err.retryAfter, // Опционально: отправляем время в теле ответа
+            retryAfter: err.retryAfter,
         })
     }
 

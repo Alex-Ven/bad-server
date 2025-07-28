@@ -1,14 +1,10 @@
 import { Router } from 'express'
-import { 
-    csrfProtection, 
-    generateCsrfToken, 
-    getCsrfToken 
+import {
+    csrfProtection,
+    generateCsrfToken,
+    getCsrfToken,
 } from '../middlewares/csrf'
-import { 
-    createOrder,
-    updateProfile,
-    changePassword 
-} from '../controllers/web'
+import { createOrder, updateProfile, changePassword } from '../controllers/web'
 
 const webRouter = Router()
 

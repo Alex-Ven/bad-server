@@ -54,9 +54,8 @@ const userSchema = new mongoose.Schema<IUser, IUserModel, IUserMethods>(
         email: {
             type: String,
             required: [true, 'Поле "email" должно быть заполнено'],
-            unique: true, // поле email уникально (есть опция unique: true);
+            unique: true,
             validate: {
-                // для проверки email студенты используют validator
                 validator: (v: string) => validator.isEmail(v),
                 message: 'Поле "email" должно быть валидным email-адресом',
             },
@@ -66,7 +65,6 @@ const userSchema = new mongoose.Schema<IUser, IUserModel, IUserMethods>(
             type: String,
             required: [true, 'Поле "password" должно быть заполнено'],
             minlength: [6, 'Минимальная длина поля "password" - 6'],
-            // select: false,
         },
 
         tokens: [
@@ -159,7 +157,7 @@ userSchema.methods.generateRefreshToken =
         const rTknHash = crypto
             .createHmac('sha256', REFRESH_TOKEN.secret)
             .update(refreshToken)
-            .digest('hex') // Всегда используем hex для согласованности
+            .digest('hex')
 
         user.tokens = user.tokens || []
         user.tokens.push({ token: rTknHash })

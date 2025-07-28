@@ -8,7 +8,7 @@ import orderRouter from './order'
 import productRouter from './product'
 import uploadRouter from './upload'
 import webRouter from './web'
-import { apiRateLimiter} from '../middlewares/rateLimiter'
+import { apiRateLimiter } from '../middlewares/rateLimiter'
 
 const router = Router()
 
@@ -19,7 +19,7 @@ router.use('/upload', auth, uploadRouter)
 router.use('/customers', apiRateLimiter, auth, customerRouter)
 
 // ✅ Веб-формы с CSRF защитой
-router.use('/web', webRouter) // ✅ Здесь применяется CSRF защита
+router.use('/web', webRouter)
 
 router.use((_req: Request, _res: Response, next: NextFunction) => {
     next(new NotFoundError('Маршрут не найден'))

@@ -4,7 +4,7 @@ import { join } from 'path'
 import { randomUUID } from 'crypto'
 import fs from 'fs'
 import xss from 'xss'
-import { fileTypeFromBuffer } from 'file-type';
+import { fileTypeFromBuffer } from 'file-type'
 import BadRequestError from '../errors/bad-request-error'
 
 type DestinationCallback = (error: Error | null, destination: string) => void
@@ -14,8 +14,8 @@ export const MIN_FILE_SIZE_BYTES = 2 * 1024 // 2KB
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 
 const getSafeUploadPath = () => {
-    const basePath = join(__dirname, '../../public') // Изменено для правильного пути
-    const uploadPath = 'uploads' // Используем фиксированную папку вместо env
+    const basePath = join(__dirname, '../../public')
+    const uploadPath = 'uploads'
     const fullPath = join(basePath, uploadPath)
 
     const normalizedBase = basePath.split('\\').join('/').toLowerCase()
@@ -79,8 +79,8 @@ const storage = multer.diskStorage({
 })
 
 interface AllowedFileType {
-    mime: string; // Или более конкретно: mime: 'image/png' | 'image/jpeg' | ...;
-    extensions: string[];
+    mime: string
+    extensions: string[]
 }
 
 const allowedTypes: AllowedFileType[] = [
@@ -88,7 +88,6 @@ const allowedTypes: AllowedFileType[] = [
     { mime: 'image/jpeg', extensions: ['jpg', 'jpeg'] },
     { mime: 'image/gif', extensions: ['gif'] },
     { mime: 'image/svg+xml', extensions: ['svg'] },
-    // { mime: 'text/plain', extensions: ['txt'] },
 ]
 
 const sanitizeSVG = (filePath: string): Promise<void> =>
@@ -120,11 +119,13 @@ const fileFilter: (
     _req: Request,
     _file: Express.Multer.File,
     callback: FileFilterCallback
-) => void = (_req: any, _file: any, callback: (arg0: null, arg1: boolean) => void) => {
-    // Первоначальная проверка по mimetype из заголовка (может быть ненадежной)
-    // Пропускаем файл, чтобы он был записан на диск для более глубокой проверки
-    callback(null, true);
-};
+) => void = (
+    _req: any,
+    _file: any,
+    callback: (arg0: null, arg1: boolean) => void
+) => {
+    callback(null, true)
+}
 
 const validateFileType = async (
     req: Request,
@@ -134,52 +135,56 @@ const validateFileType = async (
     if (req.file) {
         try {
             // Читаем первые несколько байтов файла для определения типа
-            const buffer = Buffer.alloc(4100);
-            const fd = fs.openSync(req.file.path, 'r');
-            fs.readSync(fd, buffer, 0, buffer.length, 0);
-            fs.closeSync(fd);
+            const buffer = Buffer.alloc(4100)
+            const fd = fs.openSync(req.file.path, 'r')
+            fs.readSync(fd, buffer, 0, buffer.length, 0)
+            fs.closeSync(fd)
 
-            const detectedType = await fileTypeFromBuffer(buffer);
+            const detectedType = await fileTypeFromBuffer(buffer)
 
             if (!detectedType) {
-                fs.unlinkSync(req.file.path);
-                return next(new BadRequestError('Не удалось определить тип файла. Файл поврежден или недопустим.'));
+                fs.unlinkSync(req.file.path)
+                return next(
+                    new BadRequestError(
+                        'Не удалось определить тип файла. Файл поврежден или недопустим.'
+                    )
+                )
             }
 
             // Проверяем, соответствует ли определенный тип разрешенному
             const isTypeAllowed = allowedTypes.some(
-                type => type.mime === detectedType.mime
-            );
+                (type) => type.mime === detectedType.mime
+            )
 
             if (!isTypeAllowed) {
-                fs.unlinkSync(req.file.path);
-                return next(new BadRequestError(`Недопустимый тип файла: ${detectedType.mime}. Ожидался один из: ${allowedTypes.map(t => t.mime).join(', ')}`));
+                fs.unlinkSync(req.file.path)
+                return next(
+                    new BadRequestError(
+                        `Недопустимый тип файла: ${detectedType.mime}. Ожидался один из: ${allowedTypes.map((t) => t.mime).join(', ')}`
+                    )
+                )
             }
-
-            // Опционально: Проверить расширение по определенному типу
-            // const expectedExtensions = allowedFileTypes.find(t => t.mime === detectedType.mime)?.extensions;
-            // const actualExt = req.file.originalname.split('.').pop()?.toLowerCase();
-            // if (expectedExtensions && actualExt && !expectedExtensions.includes(actualExt)) {
-            //     fs.unlinkSync(req.file.path);
-            //     return next(new BadRequestError('Расширение файла не соответствует его содержимому'));
-            // }
-
-            // console.log(`Файл проверен: ${req.file.originalname}, MIME: ${detectedType.mime}`);
-
         } catch (error) {
             try {
                 if (req.file?.path && fs.existsSync(req.file.path)) {
-                    fs.unlinkSync(req.file.path);
+                    fs.unlinkSync(req.file.path)
                 }
             } catch (unlinkError) {
-                console.error('Ошибка при удалении файла после ошибки валидации типа:', unlinkError);
+                console.error(
+                    'Ошибка при удалении файла после ошибки валидации типа:',
+                    unlinkError
+                )
             }
-            console.error('Ошибка валидации типа файла:', error);
-            return next(new BadRequestError('Ошибка проверки содержимого загруженного файла'));
+            console.error('Ошибка валидации типа файла:', error)
+            return next(
+                new BadRequestError(
+                    'Ошибка проверки содержимого загруженного файла'
+                )
+            )
         }
     }
-    next();
-};
+    next()
+}
 
 const postProcessFile = async (
     req: Request,

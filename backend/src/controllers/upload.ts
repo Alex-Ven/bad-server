@@ -22,7 +22,7 @@ export const uploadFile = async (
         }
 
         // Формируем безопасный путь
-        const uploadDir = 'uploads' // Фиксированное значение вместо process.env
+        const uploadDir = 'uploads'
         const fileName = `/${uploadDir}/${req.file.filename}`
 
         // Проверка безопасности пути
@@ -32,11 +32,11 @@ export const uploadFile = async (
 
         // Формирование ответа
         return res.status(constants.HTTP_STATUS_CREATED).json({
-            fileName, // Обязательное поле для тестов
+            fileName,
             originalName: req.file.originalname,
             size: req.file.size,
             mimetype: req.file.mimetype,
-            downloadUrl: fileName, // Простая реализация для тестов
+            downloadUrl: fileName,
         })
     } catch (error) {
         if (req.file?.path) {
