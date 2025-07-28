@@ -4,6 +4,7 @@ import { join } from 'path'
 import { randomUUID } from 'crypto'
 import fs from 'fs'
 import xss from 'xss'
+import { fileTypeFromBuffer } from 'file-type';
 import BadRequestError from '../errors/bad-request-error'
 
 type DestinationCallback = (error: Error | null, destination: string) => void
@@ -77,13 +78,17 @@ const storage = multer.diskStorage({
     },
 })
 
-const allowedTypes = [
-    'image/png',
-    'image/jpg',
-    'image/jpeg',
-    'image/gif',
-    'image/svg+xml',
-    'text/plain',
+interface AllowedFileType {
+    mime: string; // Или более конкретно: mime: 'image/png' | 'image/jpeg' | ...;
+    extensions: string[];
+}
+
+const allowedTypes: AllowedFileType[] = [
+    { mime: 'image/png', extensions: ['png'] },
+    { mime: 'image/jpeg', extensions: ['jpg', 'jpeg'] },
+    { mime: 'image/gif', extensions: ['gif'] },
+    { mime: 'image/svg+xml', extensions: ['svg'] },
+    // { mime: 'text/plain', extensions: ['txt'] },
 ]
 
 const sanitizeSVG = (filePath: string): Promise<void> =>
@@ -111,23 +116,70 @@ const sanitizeSVG = (filePath: string): Promise<void> =>
         })
     })
 
-const fileFilter = (
+const fileFilter: (
     _req: Request,
-    file: Express.Multer.File,
-    cb: FileFilterCallback
+    _file: Express.Multer.File,
+    callback: FileFilterCallback
+) => void = (_req: any, _file: any, callback: (arg0: null, arg1: boolean) => void) => {
+    // Первоначальная проверка по mimetype из заголовка (может быть ненадежной)
+    // Пропускаем файл, чтобы он был записан на диск для более глубокой проверки
+    callback(null, true);
+};
+
+const validateFileType = async (
+    req: Request,
+    _res: Response,
+    next: NextFunction
 ) => {
-    try {
-        if (!allowedTypes.includes(file.mimetype)) {
-            return cb(new Error('Недопустимый тип файла'))
+    if (req.file) {
+        try {
+            // Читаем первые несколько байтов файла для определения типа
+            const buffer = Buffer.alloc(4100);
+            const fd = fs.openSync(req.file.path, 'r');
+            fs.readSync(fd, buffer, 0, buffer.length, 0);
+            fs.closeSync(fd);
+
+            const detectedType = await fileTypeFromBuffer(buffer);
+
+            if (!detectedType) {
+                fs.unlinkSync(req.file.path);
+                return next(new BadRequestError('Не удалось определить тип файла. Файл поврежден или недопустим.'));
+            }
+
+            // Проверяем, соответствует ли определенный тип разрешенному
+            const isTypeAllowed = allowedTypes.some(
+                type => type.mime === detectedType.mime
+            );
+
+            if (!isTypeAllowed) {
+                fs.unlinkSync(req.file.path);
+                return next(new BadRequestError(`Недопустимый тип файла: ${detectedType.mime}. Ожидался один из: ${allowedTypes.map(t => t.mime).join(', ')}`));
+            }
+
+            // Опционально: Проверить расширение по определенному типу
+            // const expectedExtensions = allowedFileTypes.find(t => t.mime === detectedType.mime)?.extensions;
+            // const actualExt = req.file.originalname.split('.').pop()?.toLowerCase();
+            // if (expectedExtensions && actualExt && !expectedExtensions.includes(actualExt)) {
+            //     fs.unlinkSync(req.file.path);
+            //     return next(new BadRequestError('Расширение файла не соответствует его содержимому'));
+            // }
+
+            // console.log(`Файл проверен: ${req.file.originalname}, MIME: ${detectedType.mime}`);
+
+        } catch (error) {
+            try {
+                if (req.file?.path && fs.existsSync(req.file.path)) {
+                    fs.unlinkSync(req.file.path);
+                }
+            } catch (unlinkError) {
+                console.error('Ошибка при удалении файла после ошибки валидации типа:', unlinkError);
+            }
+            console.error('Ошибка валидации типа файла:', error);
+            return next(new BadRequestError('Ошибка проверки содержимого загруженного файла'));
         }
-
-        cb(null, true)
-    } catch (error) {
-        cb(error as Error)
     }
-}
-
-
+    next();
+};
 
 const postProcessFile = async (
     req: Request,
@@ -206,6 +258,5 @@ const fileMiddleware = multer({
     },
 })
 
-export { handleMulterError }
+export { handleMulterError, validateFileType, postProcessFile }
 export default fileMiddleware
-export { postProcessFile }
