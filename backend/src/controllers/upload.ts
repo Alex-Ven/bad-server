@@ -14,21 +14,6 @@ export const uploadFile = async (
     }
 
     try {
-        const allowedMimeTypes = [
-            'image/png',
-            'image/jpeg',
-            'image/jpg',
-            'image/gif',
-        ]
-        if (!allowedMimeTypes.includes(req.file.mimetype)) {
-            throw new BadRequestError('Недопустимый тип файла')
-        }
-
-        // Проверка расширения
-        const ext = req.file.originalname.split('.').pop()?.toLowerCase()
-        if (!ext || !['png', 'jpg', 'jpeg', 'gif'].includes(ext)) {
-            throw new BadRequestError('Недопустимое расширение файла')
-        }
         // Проверка размера файла
         if (req.file.size < MIN_FILE_SIZE_BYTES) {
             throw new BadRequestError(
@@ -45,14 +30,18 @@ export const uploadFile = async (
             throw new BadRequestError('Некорректный путь к файлу')
         }
 
-        // Формирование ответа
+        // Формирование полного ответа
         return res.status(constants.HTTP_STATUS_CREATED).json({
-            fileName, // Обязательное поле для тестов
-            originalName: req.file.originalname,
-            size: req.file.size,
-            mimetype: req.file.mimetype,
-            downloadUrl: fileName, // Простая реализация для тестов
+            success: true,
+            data: {
+                fileName,
+                originalName: req.file.originalname,
+                size: req.file.size,
+                mimetype: req.file.mimetype,
+                downloadUrl: `${process.env.BASE_URL || ''}${fileName}`,
+            },
         })
+
     } catch (error) {
         if (req.file?.path) {
             try {
@@ -66,11 +55,10 @@ export const uploadFile = async (
             return next(error)
         }
 
-        return next(
-            new BadRequestError(
-                error instanceof Error ? error.message : 'Ошибка загрузки файла'
-            )
-        )
+        const message =
+            error instanceof Error ? error.message : 'Ошибка загрузки файла'
+        return next(new BadRequestError(message))
+        
     }
 }
 
