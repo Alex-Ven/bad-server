@@ -33,7 +33,6 @@ app.use(
 
 app.use(cookieParser())
 
-// app.use(cors())
 app.use(
     cors({
         origin: ORIGIN_ALLOW,
