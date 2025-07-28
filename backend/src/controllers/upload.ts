@@ -37,6 +37,7 @@ export const uploadFile = async (
                 originalName: req.file.originalname,
                 size: req.file.size,
                 mimetype: req.file.mimetype,
+                downloadUrl: `${process.env.BASE_URL || ''}${fileName}`,
             },
         })
     } catch (error) {
