@@ -1,12 +1,26 @@
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
-import { NextFunction, Request } from 'express'
+import rateLimit from 'express-rate-limit'
+import { Request } from 'express'
 import Redis from 'ioredis'
-import RedisStore from 'rate-limit-redis'
 import TooManyRequestsError from '../errors/too-many-requests-error'
 
 // ✅ Хелпер функция для безопасного получения user ID
 const getUserId = (req: Request): string | undefined =>
     (req as any).user?._id || (req as any).user?.id
+
+// ✅ Функция для получения IP-адреса, совместимая с express-rate-limit
+// Взято из исходников express-rate-limit и немного адаптировано
+const ipKeyGenerator = (req: Request): string => {
+    if (req.ip) return req.ip;
+    if (req.connection?.remoteAddress) return req.connection.remoteAddress;
+    if (req.socket?.remoteAddress) return req.socket.remoteAddress;
+    if (req.headers['x-forwarded-for']) {
+        // Обычно это массив IP-адресов, разделенных запятыми.
+        // Первый IP - это оригинальный клиент.
+        const forwardedIps = (req.headers['x-forwarded-for'] as string).split(',');
+        return forwardedIps[0]?.trim() || 'unknown';
+    }
+    return 'unknown';
+};
 
 // ✅ Хелпер функция для получения email
 // const getUserEmail = (req: Request): string | undefined => (req as any).user?.email;
@@ -30,7 +44,7 @@ export const loginLimiter = rateLimit({
             return req.body.email
         }
         // Используем встроенный обработчик IP для IPv6/IPv4
-        return ipKeyGenerator(req as unknown as string)
+        return ipKeyGenerator
     },
     handler: (req: Request, _res, next) => {
         const { email } = req.body
@@ -47,7 +61,7 @@ export const loginLimiter = rateLimit({
 export const sensitiveOperationLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 минут
     max: 3, // максимум 3 попытки
-    keyGenerator: (req: Request) => ipKeyGenerator(req as unknown as string),
+    keyGenerator: ipKeyGenerator,
     handler: (_req: Request, _res, next) => {
         next(
             new TooManyRequestsError(
@@ -70,7 +84,7 @@ export const orderCreationLimiter = rateLimit({
         if (userId) {
             return `order:user:${userId}`
         }
-        return `order:ip:${ipKeyGenerator(req as unknown as string)}`
+        return `order:ip:${ipKeyGenerator}`
     },
     handler: (_req: Request, _res, next) => {
         next(
@@ -94,7 +108,7 @@ export const registrationLimiter = rateLimit({
             const sanitizedEmail = req.body.email.toLowerCase().trim()
             return `register:email:${sanitizedEmail}`
         }
-        return `register:ip:${ipKeyGenerator(req as unknown as string)}`
+        return `register:ip:${ipKeyGenerator}`
     },
     handler: (_req: Request, _res, next) => {
         next(
@@ -117,7 +131,7 @@ export const uploadLimiter = rateLimit({
         if (userId) {
             return `upload:user:${userId}`
         }
-        return `upload:ip:${ipKeyGenerator(req as unknown as string)}`
+        return `upload:ip:${ipKeyGenerator}`
     },
     handler: (_req: Request, _res, next) => {
         next(
@@ -134,6 +148,7 @@ export const uploadLimiter = rateLimit({
 export const apiRateLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
     max: 5,
+    keyGenerator: ipKeyGenerator,
     handler: (_req: Request, _res, next) => {
         next(new TooManyRequestsError('Слишком много запросов к API. Попробуйте позже.', 60));
     },
