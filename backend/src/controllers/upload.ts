@@ -31,10 +31,14 @@ export const uploadFile = async (
         }
         // Формирование ответа
         return res.status(constants.HTTP_STATUS_CREATED).json({
-            fileName: `/uploads/${req.file.filename}`,
-            originalName: req.file.originalname,
-            size: req.file.size,
-            mimetype: req.file.mimetype,
+            success: true,
+            data: {
+                fileName,
+                originalName: req.file.originalname,
+                size: req.file.size,
+                mimetype: req.file.mimetype,
+                downloadUrl: `${process.env.BASE_URL}${fileName}`,
+            },
         })
     } catch (error) {
         if (req.file?.path) {
