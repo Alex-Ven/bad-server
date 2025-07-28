@@ -1,3 +1,4 @@
+// middlewares/rateLimiter.ts
 import rateLimit from 'express-rate-limit'
 import { Request } from 'express'
 import Redis from 'ioredis'
@@ -8,22 +9,16 @@ const getUserId = (req: Request): string | undefined =>
     (req as any).user?._id || (req as any).user?.id
 
 // ✅ Функция для получения IP-адреса, совместимая с express-rate-limit
-// Взято из исходников express-rate-limit и немного адаптировано
 const ipKeyGenerator = (req: Request): string => {
     if (req.ip) return req.ip;
     if (req.connection?.remoteAddress) return req.connection.remoteAddress;
     if (req.socket?.remoteAddress) return req.socket.remoteAddress;
     if (req.headers['x-forwarded-for']) {
-        // Обычно это массив IP-адресов, разделенных запятыми.
-        // Первый IP - это оригинальный клиент.
         const forwardedIps = (req.headers['x-forwarded-for'] as string).split(',');
         return forwardedIps[0]?.trim() || 'unknown';
     }
     return 'unknown';
 };
-
-// ✅ Хелпер функция для получения email
-// const getUserEmail = (req: Request): string | undefined => (req as any).user?.email;
 
 const redis = new Redis({
     host: process.env.REDIS_HOST || 'redis',
@@ -39,12 +34,11 @@ export const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 минут
     max: 5, // максимум 5 попыток
     keyGenerator: (req: Request) => {
-        // Явная проверка на наличие email в body
         if (req.body?.email && typeof req.body.email === 'string') {
             return req.body.email
         }
-        // Используем встроенный обработчик IP для IPv6/IPv4
-        return ipKeyGenerator
+        // Исправлено: вызываем функцию ipKeyGenerator
+        return ipKeyGenerator(req)
     },
     handler: (req: Request, _res, next) => {
         const { email } = req.body
@@ -61,7 +55,7 @@ export const loginLimiter = rateLimit({
 export const sensitiveOperationLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 минут
     max: 3, // максимум 3 попытки
-    keyGenerator: ipKeyGenerator,
+    keyGenerator: ipKeyGenerator, // ✅ Корректно
     handler: (_req: Request, _res, next) => {
         next(
             new TooManyRequestsError(
@@ -79,12 +73,12 @@ export const orderCreationLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 час
     max: 10, // максимум 10 заказов в час
     keyGenerator: (req: Request) => {
-        // Используем user ID если доступен
         const userId = getUserId(req)
         if (userId) {
             return `order:user:${userId}`
         }
-        return `order:ip:${ipKeyGenerator}`
+        // Исправлено: вызываем функцию ipKeyGenerator
+        return `order:ip:${ipKeyGenerator(req)}`
     },
     handler: (_req: Request, _res, next) => {
         next(
@@ -103,12 +97,12 @@ export const registrationLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 час
     max: 3, // максимум 3 регистрации в час
     keyGenerator: (req: Request) => {
-        // Используем email или IP для регистрации
         if (req.body?.email && typeof req.body.email === 'string') {
             const sanitizedEmail = req.body.email.toLowerCase().trim()
             return `register:email:${sanitizedEmail}`
         }
-        return `register:ip:${ipKeyGenerator}`
+        // Исправлено: вызываем функцию ipKeyGenerator
+        return `register:ip:${ipKeyGenerator(req)}`
     },
     handler: (_req: Request, _res, next) => {
         next(
@@ -131,7 +125,8 @@ export const uploadLimiter = rateLimit({
         if (userId) {
             return `upload:user:${userId}`
         }
-        return `upload:ip:${ipKeyGenerator}`
+        // Исправлено: вызываем функцию ipKeyGenerator
+        return `upload:ip:${ipKeyGenerator(req)}`
     },
     handler: (_req: Request, _res, next) => {
         next(
@@ -145,10 +140,11 @@ export const uploadLimiter = rateLimit({
     legacyHeaders: false,
 })
 
+// ✅ Rate limiter для общих API запросов (например, для /customers)
 export const apiRateLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,
-    max: 5,
-    keyGenerator: ipKeyGenerator,
+    windowMs: 1 * 60 * 1000, // 1 минута
+    max: 5, // максимум 5 запросов
+    keyGenerator: ipKeyGenerator, // ✅ Корректно
     handler: (_req: Request, _res, next) => {
         next(new TooManyRequestsError('Слишком много запросов к API. Попробуйте позже.', 60));
     },
