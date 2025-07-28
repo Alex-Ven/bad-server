@@ -1,6 +1,7 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
-import { Request } from 'express'
+import { NextFunction, Request } from 'express'
 import Redis from 'ioredis'
+import RedisStore from 'rate-limit-redis'
 import TooManyRequestsError from '../errors/too-many-requests-error'
 
 // ✅ Хелпер функция для безопасного получения user ID
@@ -130,11 +131,9 @@ export const uploadLimiter = rateLimit({
     legacyHeaders: false,
 })
 
-// ✅ Rate limiter для общих API запросов (например, для /customers)
 export const apiRateLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 минута
+    windowMs: 1 * 60 * 1000,
     max: 5,
-    keyGenerator: (req: Request) => ipKeyGenerator(req as unknown as string),
     handler: (_req: Request, _res, next) => {
         next(new TooManyRequestsError('Слишком много запросов к API. Попробуйте позже.', 60));
     },
