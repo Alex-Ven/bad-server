@@ -2,7 +2,7 @@ import { CookieOptions } from 'express'
 import ms from 'ms'
 
 export const { PORT = '3000' } = process.env
-export const { DB_ADDRESS = 'mongodb://127.0.0.1:27017/weblarek' } = process.env
+export const DB_ADDRESS = process.env.DB_ADDRESS || 'mongodb://localhost:27017/weblarek'
 export const { JWT_SECRET = 'JWT_SECRET' } = process.env
 export const ACCESS_TOKEN = {
     secret: process.env.AUTH_ACCESS_TOKEN_SECRET || 'secret-dev',
