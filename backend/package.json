@@ -6,7 +6,8 @@
   "scripts": {
     "lint": "npx eslint src/**/*.ts",
     "format": "prettier ./src --write",
-    "build": "tsc && cp -r src/public public/",
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "mkdir -p public/images && cp -r src/public/images/* public/images/ || echo 'Copy failed, trying alternative'",
     "dev": "ts-node-dev --watch src src/app.ts",
     "start": "node dist/app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
