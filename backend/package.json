@@ -6,7 +6,7 @@
   "scripts": {
     "lint": "npx eslint src/**/*.ts",
     "format": "prettier ./src --write",
-    "build": "tsc",
+    "build": "tsc && cp -r src/public public/",
     "dev": "ts-node-dev --watch src src/app.ts",
     "start": "node dist/app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
