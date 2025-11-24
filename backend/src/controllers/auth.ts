@@ -163,17 +163,29 @@ const deleteRefreshTokenInUser = async (
     }
 };
 
-const logout = async (req: Request, res: Response, next: NextFunction) => {
+const logout = async (req: Request, res: Response) => {
+  const { cookies } = req;
+  const refreshToken = cookies[REFRESH_TOKEN.cookie.name];
+
+  // Попробуем удалить из базы, но если не получится — всё равно выйдем
+  if (refreshToken) {
     try {
-        await deleteRefreshTokenInUser(req, res, next);
-        res.clearCookie(REFRESH_TOKEN.cookie.name, {
-            path: '/',
-            domain: process.env.COOKIE_DOMAIN || undefined,
-        });
-        res.status(200).json({ success: true });
-    } catch (error) {
-        next(error);
+      await deleteRefreshTokenInUser(req, res, () => {}); // next не используем
+    } catch (err) {
+      // Игнорируем ошибки — токен мог истечь, быть невалидным и т.д.
+      console.log('Logout: не удалось удалить токен из БД, но это ОК');
     }
+  }
+
+  // В любом случае — очищаем куку
+  res.clearCookie(REFRESH_TOKEN.cookie.name, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+  });
+
+  return res.json({ success: true, message: 'Logout successful' });
 };
 
 const refreshAccessToken = async (
