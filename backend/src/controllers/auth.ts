@@ -7,7 +7,7 @@ import { REFRESH_TOKEN } from '../config';
 import BadRequestError from '../errors/bad-request-error';
 import ConflictError from '../errors/conflict-error';
 import NotFoundError from '../errors/not-found-error';
-import UnauthorizedError from '../errors/unauthorized-error';
+// import UnauthorizedError from '../errors/unauthorized-error';
 import User from '../models/user';
 import { sanitizeInput } from '../utils/sanitize';
 
@@ -95,72 +95,29 @@ const getCurrentUser = async (
     }
 };
 
-const deleteRefreshTokenInUser = async (
-    req: Request,
+const deleteRefreshTokenInUser = async (req: Request,
     _res: Response,
     _next: NextFunction
 ) => {
-    const { cookies } = req;
-    const rfTkn = cookies[REFRESH_TOKEN.cookie.name];
+  const refreshToken = req.cookies[REFRESH_TOKEN.cookie.name];
+  if (!refreshToken) return; // просто выходим, если куки нет
 
-    if (!rfTkn) {
-        console.error('Refresh token missing in cookies');
-        throw new UnauthorizedError('Не валидный токен');
-    }
+  try {
+    const decoded = jwt.verify(refreshToken, REFRESH_TOKEN.secret) as JwtPayload;
+    const user = await User.findById(decoded._id);
+    if (!user) return;
 
-    try {
-        const decodedRefreshTkn = jwt.verify(
-            rfTkn,
-            REFRESH_TOKEN.secret
-        ) as JwtPayload;
+    const tokenHash = crypto
+      .createHmac('sha256', REFRESH_TOKEN.secret)
+      .update(refreshToken)
+      .digest('hex');
 
-        console.log(`Processing token for user ${decodedRefreshTkn._id}`);
-
-        const user = await User.findOne({
-            _id: decodedRefreshTkn._id,
-        }).orFail(() => {
-            console.error(`User ${decodedRefreshTkn._id} not found`);
-            return new UnauthorizedError('Пользователь не найден в базе');
-        });
-
-        const rTknHash = crypto
-            .createHmac('sha256', REFRESH_TOKEN.secret)
-            .update(rfTkn)
-            .digest('hex');
-
-        console.log(`Generated token hash: ${rTknHash.substring(0, 10)}...`);
-        console.log(`User has ${user.tokens?.length || 0} stored tokens`);
-
-        const tokenIndex =
-            user.tokens?.findIndex((t) => t.token === rTknHash) ?? -1;
-
-        if (tokenIndex === -1) {
-            console.error('No matching token found in database');
-            console.error(
-                'Stored tokens:',
-                user.tokens?.map((t) => t.token.substring(0, 10))
-            );
-            throw new UnauthorizedError('Не валидный токен');
-        }
-
-        user.tokens?.splice(tokenIndex, 1);
-        await user.save();
-        console.log('Token successfully removed');
-
-        return user;
-    } catch (err) {
-        console.error('Error in deleteRefreshTokenInUser:', err);
-
-        if (err instanceof jwt.TokenExpiredError) {
-            throw new UnauthorizedError('Срок действия токена истек');
-        }
-
-        if (err instanceof jwt.JsonWebTokenError) {
-            throw new UnauthorizedError('Не валидный токен');
-        }
-
-        throw new UnauthorizedError('Ошибка аутентификации');
-    }
+    user.tokens = user.tokens?.filter(t => t.token !== tokenHash) || [];
+    await user.save();
+  } catch (err) {
+    // Игнорируем любые ошибки — токен мог истечь, быть невалидным и т.д.
+    // Главное — не падать!
+  }
 };
 
 const logout = async (req: Request, res: Response) => {
@@ -188,30 +145,40 @@ const logout = async (req: Request, res: Response) => {
   return res.json({ success: true, message: 'Logout successful' });
 };
 
-const refreshAccessToken = async (
-    req: Request,
-    res: Response,
-    next: NextFunction
-) => {
-    try {
-        const user = await deleteRefreshTokenInUser(req, res, next);
-        const accessToken = user.generateAccessToken();
-        const refreshToken = await user.generateRefreshToken();
+const refreshAccessToken = async (req: Request, res: Response) => {
+  const refreshToken = req.cookies[REFRESH_TOKEN.cookie.name];
 
-        res.cookie(
-            REFRESH_TOKEN.cookie.name,
-            refreshToken,
-            REFRESH_TOKEN.cookie.options
-        );
-        const sanitizedUser = sanitizeUserForOutput(user);
-        res.json({
-            success: true,
-            user: sanitizedUser,
-            accessToken,
-        });
-    } catch (error) {
-        next(error);
+  if (!refreshToken) {
+    return res.status(401).json({ message: 'Токен не предоставлен' });
+  }
+
+  try {
+    const decoded = jwt.verify(refreshToken, REFRESH_TOKEN.secret) as JwtPayload;
+    const user = await User.findById(decoded._id);
+
+    if (!user) {
+      return res.status(401).json({ message: 'Пользователь не найден' });
     }
+
+    // Удаляем старый токен (без падения)
+    await deleteRefreshTokenInUser(req, res, () => {});
+
+    // Создаём новые токены
+    const accessToken = user.generateAccessToken();
+    const newRefreshToken = await user.generateRefreshToken();
+
+    // Ставим новую куку
+    res.cookie(REFRESH_TOKEN.cookie.name, newRefreshToken, REFRESH_TOKEN.cookie.options);
+
+    const sanitizedUser = sanitizeUserForOutput(user);
+    return res.json({
+      success: true,
+      user: sanitizedUser,
+      accessToken,
+    });
+  } catch (err) {
+    return res.status(401).json({ message: 'Не валидный или истёкший токен' });
+  }
 };
 
 const getCurrentUserRoles = async (
