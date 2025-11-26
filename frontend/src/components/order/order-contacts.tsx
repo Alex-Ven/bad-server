@@ -44,6 +44,18 @@ export function OrderContacts() {
         setValuesForm({ ...values, comment: value })
     }
 
+    const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        // e.target.value — это уже замаскированное значение
+        const syntheticEvent = {
+            target: {
+                name: 'phone',
+                value: e.target.value,
+            },
+        } as React.ChangeEvent<HTMLInputElement>
+
+        handleChange(syntheticEvent)
+    }
+
     const handleFormSubmit = (e: SyntheticEvent<HTMLFormElement>) => {
         e.preventDefault()
         setInfo(values)
@@ -83,7 +95,7 @@ export function OrderContacts() {
             />
             <Input
                 value={values.phone || ''}
-                onChange={handleChange}
+                onChange={handlePhoneChange}
                 name='phone'
                 type='tel'
                 placeholder='+7 (999) 999-99-99'
