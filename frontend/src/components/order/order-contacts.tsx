@@ -85,7 +85,9 @@ export function OrderContacts() {
         <Form handleFormSubmit={handleFormSubmit} formRef={formRef}>
             <Input
                 value={values.email || ''}
-                onChange={handleChange}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    handleChange(e) // просто пробрасываем
+                }}
                 name='email'
                 type='email'
                 placeholder='Введите Email'
