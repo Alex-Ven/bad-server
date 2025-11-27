@@ -57,3 +57,4 @@ bash $DIR_TESTS/bin/run.sh   # или npm test
 Есть идеи? → [Создать Issue](https://github.com/Alex-Ven/bad-server/issues/new)
 
 **Теги:** `nodejs`, `express`, `security`, `docker`, `playwright`, `audit`, `portfolio`, `2025`
+
