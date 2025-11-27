@@ -38,22 +38,10 @@ export function OrderContacts() {
             email: orderPersistData.email,
             phone: orderPersistData.phone,
         })
-    }, [orderPersistData])
+    }, [orderPersistData, setValuesForm])
 
     const handleEditInputChange = (value: string) => {
         setValuesForm({ ...values, comment: value })
-    }
-
-    const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        // e.target.value — это уже замаскированное значение
-        const syntheticEvent = {
-            target: {
-                name: 'phone',
-                value: e.target.value,
-            },
-        } as React.ChangeEvent<HTMLInputElement>
-
-        handleChange(syntheticEvent)
     }
 
     const handleFormSubmit = (e: SyntheticEvent<HTMLFormElement>) => {
@@ -85,9 +73,7 @@ export function OrderContacts() {
         <Form handleFormSubmit={handleFormSubmit} formRef={formRef}>
             <Input
                 value={values.email || ''}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                    handleChange(e) // просто пробрасываем
-                }}
+                onChange={handleChange}
                 name='email'
                 type='email'
                 placeholder='Введите Email'
@@ -96,12 +82,12 @@ export function OrderContacts() {
                 error={errors.email}
             />
             <Input
-                mask='+7 (999) 999 99 99'
                 value={values.phone || ''}
-                onChange={handlePhoneChange}
+                onChange={handleChange}
                 name='phone'
                 type='tel'
-                placeholder='+7 (999) 999 99 99'
+                placeholder='+7 (999) 999-99-99'
+                mask='+7 (999) 999 99 99'
                 label='Телефон'
                 required
                 error={errors.phone}
