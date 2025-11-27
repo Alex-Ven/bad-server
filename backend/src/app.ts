@@ -12,12 +12,11 @@ import serveStatic from './middlewares/serverStatic'
 import routes from './routes'
 import { handleCsrfError } from './middlewares/csrf'
 
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000
+const { PORT = 3000 } = process.env
 const { ORIGIN_ALLOW } = process.env
 const SESSION_SECRET =
     process.env.SESSION_SECRET ||
     'your_very_secret_key_here_at_least_32_characters_long'
-
 const app = express()
 
 app.use(
