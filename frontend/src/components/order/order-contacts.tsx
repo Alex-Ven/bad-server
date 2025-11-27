@@ -29,7 +29,7 @@ export function OrderContacts() {
     const { values, handleChange, errors, isValid, setValuesForm } =
         useFormWithValidation<ContactsFormValues>(
             { email: '', phone: '', comment: '' },
-            formRef.current
+            // formRef.current
         )
 
     useEffect(() => {
