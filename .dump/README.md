@@ -2,7 +2,7 @@
 
 #### Default admin
 - login: `admin@mail.ru`
-- password: `admin`
+- password: `password`
 
 #### Customer 1
 - login: `user1@mail.ru`
