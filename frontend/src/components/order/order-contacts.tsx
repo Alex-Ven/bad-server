@@ -29,7 +29,7 @@ export function OrderContacts() {
     const { values, handleChange, errors, isValid, setValuesForm } =
         useFormWithValidation<ContactsFormValues>(
             { email: '', phone: '', comment: '' },
-            // formRef.current
+            formRef.current
         )
 
     useEffect(() => {
@@ -38,7 +38,7 @@ export function OrderContacts() {
             email: orderPersistData.email,
             phone: orderPersistData.phone,
         })
-    }, [orderPersistData, setValuesForm])
+    }, [orderPersistData])
 
     const handleEditInputChange = (value: string) => {
         setValuesForm({ ...values, comment: value })
@@ -96,12 +96,12 @@ export function OrderContacts() {
                 error={errors.email}
             />
             <Input
+                mask='+7 (999) 999 99 99'
                 value={values.phone || ''}
                 onChange={handlePhoneChange}
                 name='phone'
                 type='tel'
-                placeholder='+7 (999) 999-99-99'
-                mask='+7 (999) 999 99 99'
+                placeholder='+7 (999) 999 99 99'
                 label='Телефон'
                 required
                 error={errors.phone}
