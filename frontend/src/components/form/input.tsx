@@ -1,4 +1,3 @@
-// Input.tsx — с логированием
 import clsx from 'clsx'
 import { DetailedHTMLProps, ElementType, InputHTMLAttributes } from 'react'
 import styles from './input.module.scss'
@@ -34,25 +33,6 @@ export function Input({
     component: Component = 'input',
     ...props
 }: InputProps) {
-    // 🔍 ЛОГ: проверяем, передаётся ли onChange как функция
-    console.log('Input render:', {
-        Component:
-            typeof Component === 'string' ? Component : 'CustomComponent',
-        hasOnChange: typeof onChange === 'function',
-        value,
-        name: props.name,
-    })
-
-    // Оборачиваем onChange для логирования вызова
-    const handleChangeWithLog = (e: React.SyntheticEvent) => {
-        console.log('Input onChange called with event:', {
-            targetValue: (e.target as HTMLInputElement)?.value,
-            targetName: (e.target as HTMLInputElement)?.name,
-            eventType: e.type,
-        })
-        onChange(e as React.ChangeEvent<HTMLInputElement>)
-    }
-
     return (
         <label
             className={clsx(
@@ -69,7 +49,7 @@ export function Input({
                 className={clsx(styles.form__input, extraClass)}
                 onInput={onInput}
                 onBlur={onBlur}
-                onChange={handleChangeWithLog} // ← логируем вызов
+                onChange={onChange}
                 value={value}
                 type={type}
                 placeholder={placeholder}
