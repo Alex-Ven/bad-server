@@ -1,6 +1,8 @@
 services:
   frontend:
-    build: ./frontend
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile-dev
     ports:
       - "5173:5173"
     volumes:
@@ -35,7 +37,9 @@ services:
       - internal
 
   server:     # ← nginx
-    build: ./nginx
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile-dev
     ports:
       - "80:80"
     depends_on:
