@@ -18,6 +18,7 @@ import EditorInput from '../editor-text/editor-input'
 import styles from './order.module.scss'
 
 export function OrderContacts() {
+    console.log('🚨 ORDER CONTACTS IS LOADING! 🚨');
     const location = useLocation()
     const navigate = useNavigate()
     const { selectOrderInfo } = orderFormSelector
@@ -33,12 +34,18 @@ export function OrderContacts() {
         )
 
     useEffect(() => {
-        // восстанавливаем значение формы из стора
-        setValuesForm({
-            email: orderPersistData.email,
-            phone: orderPersistData.phone,
+        console.log('orderPersistData:', orderPersistData)
+        console.log('Setting values:', {
+            email: orderPersistData.email ?? '',
+            phone: orderPersistData.phone ?? '',
         })
-    }, [orderPersistData, setValuesForm])
+
+        setValuesForm({
+            email: orderPersistData.email ?? '',
+            phone: orderPersistData.phone ?? '',
+            comment: values.comment,
+        })
+    }, [orderPersistData, values.comment])
 
     const handleEditInputChange = (value: string) => {
         setValuesForm({ ...values, comment: value })

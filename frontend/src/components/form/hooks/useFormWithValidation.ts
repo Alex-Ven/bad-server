@@ -22,6 +22,7 @@ export default function useFormWithValidation<T>(
     const [isValid, setIsValid] = React.useState<boolean>(false)
 
     const handleChange = (evt: ChangeEvent<HTMLInputElement>) => {
+        console.log('handleChange fired:', evt.target.name, '=', evt.target.value);
         const input = evt.target
         const value = input.value
         const name = input.name

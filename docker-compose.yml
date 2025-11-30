@@ -1,72 +1,70 @@
 services:
   frontend:
-    build:
-      context: frontend
-    env_file:
-      - frontend/.env
-    volumes:
-      - frontend:/app/frontend/dist
-
-  mongo:
-    image: mongo
-    restart: always
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
-    volumes:
-      - ./dump:/dump
-      - db:/data/db
+    build: ./frontend
     ports:
-      - 27017:27017
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - VITE_API_URL=http://localhost/api    # или что у тебя там
+    command: npm run dev -- --host
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5173"]   # главное
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 3s
     networks:
       - internal
 
   backend:
-    restart: always
-    build:
-      context: backend
-    env_file:
-      - backend/.env
-    volumes:
-      - ./backend/src:/app/src
-      - public:/app/src/public
+    build: ./backend
     ports:
-      - 3000:3000
-    networks:
-      - internal
+      - "3000:3000"
     depends_on:
       - mongo
       - redis
-
-  redis:
-    image: redis
-    restart: always
-    ports:
-      - 6379:6379
-    volumes:
-      - redis:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]   # или /health
+      interval: 5s
+      timeout: 5s
+      retries: 15
     networks:
       - internal
 
-  server:
-    build:
-      context: nginx
+  server:     # ← nginx
+    build: ./nginx
     ports:
-      - 80:80
-    volumes:
-      - frontend:/var/app
-      - public:/var/public
+      - "80:80"
     depends_on:
       - frontend
       - backend
     networks:
       - internal
 
-volumes:
-  frontend:
-  public:
-  db:
+  mongo:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - internal
+
   redis:
+    image: redis:8-alpine
+    networks:
+      - internal
+
+volumes:
+  mongo-data:
 
 networks:
   internal:
