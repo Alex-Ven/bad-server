@@ -16,7 +16,6 @@ import {
 } from '../../services/slice/orderForm'
 import EditorInput from '../editor-text/editor-input'
 import styles from './order.module.scss'
-import React from 'react'
 
 export function OrderContacts() {
     const location = useLocation()
