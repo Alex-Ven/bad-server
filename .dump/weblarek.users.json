@@ -4,7 +4,7 @@
   },
   "name": "Admin",
   "email": "admin@mail.ru",
-  "password": "$2b$10$ugQUiuiBJc89p2ujbGK/nOONzIGS2Mtp9va6ViJ5JbMjZRj6jmbW29",
+  "password": "$2b$10$aZdAsEnY9p/qelvASIlyLusGNU4ZE.BkjIJEXkwIt8VUq1.t10zrG",
   "roles": [
     "admin"
   ],
@@ -34,7 +34,7 @@
   },
   "name": "First Customer",
   "email": "user1@mail.ru",
-  "password": "$2b$10$9.yq4dDuPhnrfnwecj/wdePzd9y7LAbRg6fqUbSWd0cjvSamNpfm6",
+  "password": "$2b$10$BjVj8b8xJ3MSzRvUNScWQOPBs7V2NeSo9uFx68PmfvYdeJ7vqIYGe",
   "roles": [
     "customer"
   ],
