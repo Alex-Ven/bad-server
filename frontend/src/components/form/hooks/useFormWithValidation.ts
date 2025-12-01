@@ -39,12 +39,9 @@ export default function useFormWithValidation<T>(
         [setValues, setErrors, setIsValid, defaultValue]
     )
 
-    const setValuesForm = useCallback(
-        (data: Partial<T>) => {
-            setValues({ ...values, ...data })
-        },
-        [values]
-    )
+    const setValuesForm = useCallback((data: Partial<T>) => {
+        setValues((prev) => ({ ...prev, ...data }))
+    }, [])
 
     useEffect(() => {
         setIsValid(!!(form && form.checkValidity()))
