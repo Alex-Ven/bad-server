@@ -12,11 +12,12 @@ import serveStatic from './middlewares/serverStatic'
 import routes from './routes'
 import { handleCsrfError } from './middlewares/csrf'
 
-const { PORT = 3000 } = process.env
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000
 const { ORIGIN_ALLOW } = process.env
 const SESSION_SECRET =
     process.env.SESSION_SECRET ||
     'your_very_secret_key_here_at_least_32_characters_long'
+
 const app = express()
 
 app.use(
@@ -27,7 +28,7 @@ app.use(
         cookie: {
             secure: process.env.NODE_ENV === 'production',
             httpOnly: true,
-            sameSite: 'strict',
+            sameSite: 'none',
             maxAge: 1000 * 60 * 60 * 24 * 7,
         },
     })
@@ -61,9 +62,10 @@ app.use(errorHandler)
 const bootstrap = async () => {
     try {
         await mongoose.connect(DB_ADDRESS)
-        await app.listen(PORT, () =>
-            console.log(`ok, server running on port ${PORT}`)
-        )
+        app.listen(PORT, () => {
+            console.log(`Server successfully running on port ${PORT}`)
+            console.log(`Local: http://localhost:${PORT}`)
+        })
     } catch (error) {
         console.error('Failed to start server:', error)
         process.exit(1)
