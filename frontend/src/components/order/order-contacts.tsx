@@ -16,6 +16,7 @@ import {
 } from '../../services/slice/orderForm'
 import EditorInput from '../editor-text/editor-input'
 import styles from './order.module.scss'
+import React from 'react'
 
 export function OrderContacts() {
     const location = useLocation()
@@ -35,8 +36,8 @@ export function OrderContacts() {
     useEffect(() => {
         // восстанавливаем значение формы из стора
         setValuesForm({
-            email: orderPersistData.email,
-            phone: orderPersistData.phone,
+            email: orderPersistData.email ?? '',
+            phone: orderPersistData.phone ?? '',
         })
     }, [orderPersistData, setValuesForm])
 
