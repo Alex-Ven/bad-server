@@ -1,32 +1,17 @@
 import rateLimit from 'express-rate-limit'
 import { Request } from 'express'
-import Redis from 'ioredis'
 import TooManyRequestsError from '../errors/too-many-requests-error'
-
-// Конфигурация Redis
-const redis = new Redis({
-    host: process.env.REDIS_HOST || 'redis',
-    port: 6379,
-    retryStrategy: (times) => Math.min(times * 50, 2000),
-})
-
-redis.on('error', (err) => {
-    console.error('Redis error (rate-limit):', err)
-})
 
 // Хелпер-функции
 const getUserId = (req: Request): string | undefined =>
     (req as any).user?._id || (req as any).user?.id
 
-// ✅ Исправлено: getClientIdentifier теперь напрямую извлекает IP из req
 const getClientIdentifier = (req: Request): string => {
     try {
-        // 1. Попробуем получить IP напрямую из req
         if (req.ip) return req.ip;
         if (req.connection?.remoteAddress) return req.connection.remoteAddress;
         if (req.socket?.remoteAddress) return req.socket.remoteAddress;
         
-        // 2. Попробуем из заголовков
         if (req.headers['x-forwarded-for']) {
             const forwardedIps = (req.headers['x-forwarded-for'] as string).split(',');
             return forwardedIps[0]?.trim() || 'unknown';
@@ -35,7 +20,6 @@ const getClientIdentifier = (req: Request): string => {
             return (req.headers['x-real-ip'] as string).trim() || 'unknown';
         }
         
-        // 3. Если ничего не удалось, возвращаем 'unknown'
         console.warn('Could not determine client IP address');
         return 'unknown';
     } catch (error) {
@@ -52,8 +36,7 @@ const createLimiter = (options: {
     errorTimeout: number
     useUserId?: boolean
     useEmail?: boolean
-}) => {
-    return rateLimit({
+}) => rateLimit({
         windowMs: options.windowMs,
         max: options.max,
         keyGenerator: (req: Request) => {
@@ -64,7 +47,6 @@ const createLimiter = (options: {
                 const userId = getUserId(req)
                 if (userId) return `${options.keyPrefix}:user:${userId}`
             }
-            // Используем исправленную функцию getClientIdentifier
             return `${options.keyPrefix}:ip:${getClientIdentifier(req)}`
         },
         handler: (_req: Request, _res, next) => {
@@ -72,13 +54,8 @@ const createLimiter = (options: {
         },
         standardHeaders: true,
         legacyHeaders: false,
-        // ✅ Добавлен store для Redis (опционально, но рекомендуется для production)
-        // store: new RedisStore({ 
-        //     sendCommand: (...args: string[]) => redis.sendCommand(args),
-        //     prefix: options.keyPrefix,
-        // }),
+        // ✅ Убрана зависимость от Redis - используем встроенный memory store
     })
-}
 
 // Лимитеры
 export const loginLimiter = createLimiter({
