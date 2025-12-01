@@ -35,8 +35,8 @@ export function OrderContacts() {
     useEffect(() => {
         // восстанавливаем значение формы из стора
         setValuesForm({
-            email: orderPersistData.email,
-            phone: orderPersistData.phone,
+            email: orderPersistData.email ?? '',
+            phone: orderPersistData.phone ?? '',
         })
     }, [orderPersistData, setValuesForm])
 
